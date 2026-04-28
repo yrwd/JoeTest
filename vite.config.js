@@ -3,6 +3,15 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
+  server: {
+    proxy: {
+      '/fantrax': {
+        target: 'https://www.fantrax.com',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/fantrax/, ''),
+      },
+    },
+  },
   plugins: [
     react(),
     VitePWA({

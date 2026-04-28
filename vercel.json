@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/fantrax/:path*",
+      "destination": "https://www.fantrax.com/:path*"
+    }
+  ]
+}
