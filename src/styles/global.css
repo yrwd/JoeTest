@@ -1,0 +1,21 @@
+:root {
+  --color-primary: #0070f3;
+  --color-background: #ffffff;
+  --color-text: #111111;
+  --font-base: system-ui, -apple-system, sans-serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-base);
+  background-color: var(--color-background);
+  color: var(--color-text);
+  line-height: 1.5;
+}
