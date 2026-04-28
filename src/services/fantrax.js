@@ -15,13 +15,13 @@ async function fxpaPost(leagueId, method, extra = {}) {
   return json.responses?.[0]?.data
 }
 
-// Fetch YTD player stats across multiple pages, stopping once we have all rostered players
-async function fetchPlayerStats(leagueId, rosteredIds) {
-  const stats = {}
-  const needed = new Set(rosteredIds)
-  const maxPages = 15
+// Fetch YTD player stats and group by fantasy team using the ownership cell (cells[1]).
+// This is the only reliable way to attribute players to teams — scorerId cross-reference
+// breaks when players have been transferred and appear as free agents in the stats endpoint.
+async function fetchPlayerStatsByTeam(leagueId, shortNameToTeam) {
+  const statsByTeam = {}
 
-  for (let page = 1; page <= maxPages; page++) {
+  for (let page = 1; page <= 16; page++) {
     const data = await fxpaPost(leagueId, 'getPlayerStats', {
       maxResultsPerPage: 50,
       pageNumber: page,
@@ -33,20 +33,28 @@ async function fetchPlayerStats(leagueId, rosteredIds) {
     for (const row of rows) {
       const id = row.scorer?.scorerId
       if (!id) continue
-      stats[id] = {
+
+      // cells[1] = "FA" (free agent), "W (date)" (waiver wire), or team short name
+      const ownerRaw = row.cells?.[1]?.content || ''
+      const owner = ownerRaw.replace(/<[^>]*>/g, '').trim()
+      if (!owner || owner === 'FA' || owner.startsWith('W ')) continue
+
+      const teamName = shortNameToTeam[owner]
+      if (!teamName) continue
+
+      if (!statsByTeam[teamName]) statsByTeam[teamName] = []
+      statsByTeam[teamName].push({
+        id,
         name: row.scorer.name,
         totalPts: parseFloat(row.cells?.[3]?.content) || 0,
-        avgPts: parseFloat(row.cells?.[4]?.content) || 0,
-        startPct: row.cells?.[5]?.content || '0%'
-      }
-      needed.delete(id)
+        avgPts: parseFloat(row.cells?.[4]?.content) || 0
+      })
     }
 
-    if (needed.size === 0) break
     if (page >= (data?.paginatedResultSet?.totalNumPages || 1)) break
   }
 
-  return stats
+  return statsByTeam
 }
 
 export async function fetchLeagueData(leagueInput, onProgress) {
@@ -58,13 +66,12 @@ export async function fetchLeagueData(leagueInput, onProgress) {
     fxpaPost(leagueId, 'getStandings')
   ])
 
-  onProgress?.('Fetching match results...')
-  // Fetch schedule separately — parallel POST calls to the same endpoint can silently fail through proxies
-  const scheduleData = await fxpaPost(leagueId, 'getStandings', { view: 'SCHEDULE' }).catch(() => null)
-
   if (!Array.isArray(rawStandings) || rawStandings.length === 0) {
     throw new Error('League not found or set to private. Make your Fantrax league public in league settings.')
   }
+
+  onProgress?.('Fetching match results...')
+  const scheduleData = await fxpaPost(leagueId, 'getStandings', { view: 'SCHEDULE' }).catch(() => null)
 
   onProgress?.('Fetching draft results...')
   const draftData = await fxpaPost(leagueId, 'getDraftResults')
@@ -73,8 +80,6 @@ export async function fetchLeagueData(leagueInput, onProgress) {
   const playerDb = await fetch(`${FANTRAX}/fxea/general/getPlayerIds?sport=EPL`).then(r => r.json())
 
   const totalPeriods = 38
-  // Derive current period from the standings record — W+D+L = games played = gameweeks played.
-  // This is always accurate regardless of what the API's displayedSelections field says.
   const firstTeam = rawStandings[0]
   const [fw = 0, fd = 0, fl = 0] = (firstTeam?.points || '').split('-').map(Number)
   const currentPeriod = Math.max(fw + fd + fl, 1)
@@ -85,39 +90,30 @@ export async function fetchLeagueData(leagueInput, onProgress) {
     fetch(`${FANTRAX}/fxea/general/getTeamRosters?leagueId=${leagueId}&period=${currentPeriod}`).then(r => r.json())
   ])
 
-  // Collect all currently rostered player IDs for targeted stats fetch
-  const allRosteredIds = []
-  if (rosterCurrent?.rosters) {
-    for (const team of Object.values(rosterCurrent.rosters)) {
-      for (const p of team.rosterItems || []) allRosteredIds.push(p.id)
-    }
+  // Build short name -> team name map from richStandings fantasy team info
+  const fantasyTeamInfo = richStandings?.fantasyTeamInfo || {}
+  const shortNameToTeam = {}
+  for (const info of Object.values(fantasyTeamInfo)) {
+    if (info.shortName && info.name) shortNameToTeam[info.shortName] = info.name
   }
 
   onProgress?.('Fetching player stats...')
-  const playerStats = await fetchPlayerStats(leagueId, allRosteredIds)
+  const statsByTeam = await fetchPlayerStatsByTeam(leagueId, shortNameToTeam)
 
   // --- Process standings ---
   const standings = rawStandings.map(t => {
     const [wins = 0, draws = 0, losses = 0] = (t.points || '').split('-').map(Number)
-    return {
-      teamId: t.teamId,
-      teamName: t.teamName,
-      rank: t.rank,
-      wins, draws, losses,
-      totalPointsFor: t.totalPointsFor,
-      winPercentage: t.winPercentage
-    }
+    return { teamId: t.teamId, teamName: t.teamName, rank: t.rank, wins, draws, losses, totalPointsFor: t.totalPointsFor, winPercentage: t.winPercentage }
   })
 
   const teamById = Object.fromEntries(standings.map(t => [t.teamId, t.teamName]))
 
-  // --- Process draft picks (rounds 1-4) ---
+  // --- Draft picks ---
   const allPicks = draftData?.draftPicksOrdered || []
   const draftPicks = allPicks
     .filter(p => p.round <= 4)
     .map(p => ({
-      round: p.round,
-      pickNumber: p.pickNumber,
+      round: p.round, pickNumber: p.pickNumber,
       teamName: teamById[p.teamId] || p.teamId,
       scorerId: p.scorerId,
       playerName: playerDb[p.scorerId]?.name || `Unknown (${p.scorerId})`,
@@ -125,21 +121,14 @@ export async function fetchLeagueData(leagueInput, onProgress) {
       club: playerDb[p.scorerId]?.team || ''
     }))
 
-  // Build per-team draft lookup: teamName -> [{scorerId, round, pick, playerName}]
   const draftByTeam = {}
   for (const p of allPicks) {
     const tName = teamById[p.teamId] || p.teamId
     if (!draftByTeam[tName]) draftByTeam[tName] = []
-    draftByTeam[tName].push({
-      scorerId: p.scorerId,
-      round: p.round,
-      pickNumber: p.pickNumber,
-      playerName: playerDb[p.scorerId]?.name || ''
-    })
+    draftByTeam[tName].push({ scorerId: p.scorerId, round: p.round, pickNumber: p.pickNumber, playerName: playerDb[p.scorerId]?.name || '' })
   }
 
-  // --- Process ALL weekly matchups via SCHEDULE view ---
-  // Use schedule view if it returned data, otherwise fall back to the YTD view (last 2 weeks)
+  // --- Weekly matchups ---
   const scheduleTableList = (scheduleData?.tableList?.length ? scheduleData : richStandings)?.tableList || []
   const weeklyMatchups = scheduleTableList
     .filter(t => t.tableType === 'H2hPointsBased2' && t.caption)
@@ -150,93 +139,64 @@ export async function fetchLeagueData(leagueInput, onProgress) {
         awayFpts: parseFloat(row.cells[1]?.content) || 0,
         homeTeam: row.cells[2]?.content,
         homeFpts: parseFloat(row.cells[3]?.content) || 0
-      })).filter(m => m.awayFpts > 0 || m.homeFpts > 0) // skip unplayed weeks
+      })).filter(m => m.awayFpts > 0 || m.homeFpts > 0)
     }))
     .filter(t => t.matchups.length > 0)
-    .reverse() // oldest to newest
+    .reverse()
 
-  // --- Process per-team player highlights ---
+  // --- Per-team player highlights using ownership-attributed stats ---
   const teamPlayerHighlights = {}
-  if (roster1?.rosters && rosterCurrent?.rosters) {
+  if (rosterCurrent?.rosters) {
     for (const teamId of Object.keys(rosterCurrent.rosters)) {
-      const earlyRoster = roster1.rosters[teamId]
+      const earlyRoster = roster1?.rosters?.[teamId]
       const currentRoster = rosterCurrent.rosters[teamId]
       if (!currentRoster) continue
 
       const teamName = currentRoster.teamName
-      const earlyIds = new Set((earlyRoster?.rosterItems || []).map(p => p.id))
-      const currentItems = currentRoster.rosterItems || []
-
-      // Enrich current roster with stats + draft info
       const teamDraft = draftByTeam[teamName] || []
       const draftMap = Object.fromEntries(teamDraft.map(d => [d.scorerId, d]))
+      const earlyIds = new Set((earlyRoster?.rosterItems || []).map(p => p.id))
 
-      const enriched = currentItems.map(p => {
-        const s = playerStats[p.id] || {}
-        const d = draftMap[p.id]
-        return {
-          id: p.id,
-          name: playerDb[p.id]?.name || s.name || p.id,
-          position: playerDb[p.id]?.position || '',
-          status: p.status, // ACTIVE or RESERVE
-          totalPts: s.totalPts || 0,
-          avgPts: s.avgPts || 0,
-          startPct: s.startPct || '?%',
-          wasHereSeason1: earlyIds.has(p.id),
-          draftRound: d?.round,
-          draftPick: d?.pickNumber
-        }
-      })
+      const players = (statsByTeam[teamName] || [])
+        .filter(p => p.totalPts > 0)
+        .sort((a, b) => b.totalPts - a.totalPts)
+        .map(p => ({ ...p, draftRound: draftMap[p.id]?.round, draftPick: draftMap[p.id]?.pickNumber, wasHereSeason1: earlyIds.has(p.id) }))
 
-      // Star: highest total pts on current roster with stats
-      const withStats = enriched.filter(p => p.totalPts > 0)
-      const star = withStats.length
-        ? withStats.reduce((best, p) => p.totalPts > best.totalPts ? p : best)
-        : null
+      if (!players.length) continue
 
-      // Worst: lowest total pts (among those with any stats)
-      const worst = withStats.length
-        ? withStats.reduce((worst, p) => p.totalPts < worst.totalPts ? p : worst)
-        : null
+      const star = players[0]
+      const worst = players[players.length - 1]
 
-      // Should have sold: was on team from week 1, currently RESERVE, has stats
-      const shouldSell = enriched
-        .filter(p => p.wasHereSeason1 && p.status === 'RESERVE' && p.totalPts > 0)
-        .sort((a, b) => {
-          // Prioritise early draft picks (expected to be stars but now benched)
-          if (a.draftRound && b.draftRound) return a.draftRound - b.draftRound || a.draftPick - b.draftPick
-          return b.totalPts - a.totalPts // otherwise highest pts benched player = saddest
-        })[0] || null
+      // Should sell: underperforming player, prioritising early draft picks who flopped
+      const bottomHalf = players.slice(Math.ceil(players.length / 2))
+      const shouldSell =
+        bottomHalf.filter(p => p.draftRound && p.draftRound <= 4).sort((a, b) => a.draftRound - b.draftRound || a.draftPick - b.draftPick)[0]
+        || bottomHalf.find(p => p.wasHereSeason1)
+        || bottomHalf[0]
+        || null
 
       teamPlayerHighlights[teamName] = { star, worst, shouldSell }
     }
   }
 
-  // --- Process transfer changes ---
+  // --- Transfer changes ---
   const rosterChanges = []
   if (roster1?.rosters && rosterCurrent?.rosters) {
     for (const teamId of Object.keys(rosterCurrent.rosters)) {
       const early = roster1.rosters[teamId]
       const late = rosterCurrent.rosters[teamId]
       if (!early) continue
-
       const earlyIds = new Set(early.rosterItems.map(p => p.id))
       const lateIds = new Set(late.rosterItems.map(p => p.id))
-
       const added = [...lateIds].filter(id => !earlyIds.has(id)).map(id => playerDb[id]?.name).filter(Boolean)
       const removed = [...earlyIds].filter(id => !lateIds.has(id)).map(id => playerDb[id]?.name).filter(Boolean)
-
-      if (added.length || removed.length) {
-        rosterChanges.push({ teamName: late.teamName, added, removed })
-      }
+      if (added.length || removed.length) rosterChanges.push({ teamName: late.teamName, added, removed })
     }
   }
 
-  const leagueName = richStandings?.miscData?.heading || 'Fantasy League'
-
   return {
     leagueId,
-    leagueName,
+    leagueName: richStandings?.miscData?.heading || 'Fantasy League',
     currentPeriod,
     totalPeriods,
     standings,

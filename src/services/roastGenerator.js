@@ -205,15 +205,6 @@ function generatePlayerHighlights(standings, teamPlayerHighlights) {
       ]))
     }
 
-    if (h.shouldSell?.name && h.shouldSell.name !== h.star?.name) {
-      const draftCtx = h.shouldSell.draftRound
-        ? ` — drafted in round ${h.shouldSell.draftRound}, now riding the bench`
-        : ' — been there since week 1, currently benched'
-      parts.push(pick([
-        `Should have sold: ${h.shouldSell.name}${draftCtx}`,
-        `Overstayed their welcome: ${h.shouldSell.name}${draftCtx}`,
-      ]))
-    }
 
     if (parts.length) {
       lines.push(`${t.teamName} (${ordinal(t.rank)}):\n  ${parts.join('\n  ')}`)
@@ -263,6 +254,30 @@ function generateTransfers(rosterChanges) {
   }
 
   return lines.join('\n\n')
+}
+
+function generateShouldHaveSold(standings, teamPlayerHighlights) {
+  const lines = [`🚮 SHOULD HAVE BEEN TRANSFERRED OUT\n${'─'.repeat(40)}`]
+  let hasAny = false
+
+  for (const t of [...standings].sort((a, b) => a.rank - b.rank)) {
+    const h = teamPlayerHighlights[t.teamName]
+    if (!h?.shouldSell?.name) continue
+
+    const s = h.shouldSell
+    const draftCtx = s.draftRound ? `, a round ${s.draftRound} pick` : ''
+    const ptsCtx = s.totalPts > 0 ? ` — ${fmt(s.totalPts)} pts all season` : ''
+    const avgCtx = s.avgPts > 0 ? ` (avg ${fmt(s.avgPts)}/GW)` : ''
+
+    lines.push(pick([
+      `${t.teamName}: ${s.name}${draftCtx}${ptsCtx}${avgCtx}. Still on the squad. The window is still open.`,
+      `${t.teamName}: ${s.name}${ptsCtx}${avgCtx}${draftCtx ? `. Taken in round ${s.draftRound}` : ''}. The return has not matched the investment.`,
+      `${t.teamName}: ${s.name}${draftCtx}${ptsCtx}. Sometimes you have to accept it isn't working.`,
+    ]))
+    hasAny = true
+  }
+
+  return hasAny ? lines.join('\n\n') : ''
 }
 
 function generateAwards(standings, teamStats, lowestScore, highestScore, rosterChanges, currentPeriod, totalPeriods) {
@@ -317,6 +332,7 @@ export function generateRoast(leagueData) {
     weekly.lowestScore?.team ? generateWeeklyDrama(weekly.lowestScore, weekly.highestScore, weekly.biggestMargin, weekly.closestGame, weekly.teamStats, weeklyMatchups) : '',
     generatePlayerHighlights(standings, teamPlayerHighlights),
     draftPicks.length ? generateDraftSection(pick1, pick1Team, round1, standings) : '',
+    generateShouldHaveSold(standings, teamPlayerHighlights),
     rosterChanges.length ? generateTransfers(rosterChanges) : '',
     generateAwards(standings, weekly.teamStats || {}, weekly.lowestScore || {}, weekly.highestScore || {}, rosterChanges, currentPeriod, totalPeriods),
   ]
