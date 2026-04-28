@@ -1,33 +1,34 @@
 import { useState } from 'react'
 import { fetchLeagueData } from '../services/fantrax'
-import { generateRoast } from '../services/roastGenerator'
+import { generateRoastSections } from '../services/roastGenerator'
 
 export default function Home() {
   const [leagueUrl, setLeagueUrl] = useState('')
   const [status, setStatus] = useState('idle')
   const [progress, setProgress] = useState('')
-  const [roastText, setRoastText] = useState('')
+  const [sections, setSections] = useState([])
   const [error, setError] = useState('')
 
   async function handleRoast() {
     if (!leagueUrl.trim() || status === 'loading') return
-
     setStatus('loading')
-    setRoastText('')
+    setSections([])
     setError('')
     setProgress('Starting...')
-
     try {
       const leagueData = await fetchLeagueData(leagueUrl.trim(), setProgress)
-
-      setProgress('Generating roast...')
-      const roast = generateRoast(leagueData)
-      setRoastText(roast)
+      setProgress('Building report...')
+      setSections(generateRoastSections(leagueData))
       setStatus('done')
     } catch (err) {
       setError(err.message)
       setStatus('error')
     }
+  }
+
+  function copyAll() {
+    const text = sections.map(s => `${s.icon || ''} ${s.title}\n${'─'.repeat(40)}\n\n${s.content}`).join('\n\n\n')
+    navigator.clipboard.writeText(text)
   }
 
   const busy = status === 'loading'
@@ -37,7 +38,7 @@ export default function Home() {
       <header className="hero">
         <div className="hero-badge">⚽ Free · No AI fees</div>
         <h1>Fantasy League Roaster</h1>
-        <p>Paste your public Fantrax league URL for an end-of-season breakdown that tells the truth your mates won't.</p>
+        <p>Paste your public Fantrax league URL for a stats-based breakdown of the season so far.</p>
       </header>
 
       <div className="input-card">
@@ -72,16 +73,31 @@ export default function Home() {
         </div>
       )}
 
-      {roastText && (
-        <div className="roast-card">
-          <div className="roast-header">
-            <span>🏆 End of Season Report</span>
-            <button className="copy-btn" onClick={() => navigator.clipboard.writeText(roastText)}>
-              Copy
-            </button>
+      {sections.length > 0 && (
+        <>
+          <div className="report-toolbar">
+            <span className="report-count">{sections.length} sections</span>
+            <button className="copy-btn" onClick={copyAll}>Copy Full Report</button>
           </div>
-          <div className="roast-body">{roastText}</div>
-        </div>
+
+          <div className="tiles-grid">
+            {sections.map(section => (
+              <div
+                key={section.id}
+                className={`tile tile--${section.accent || 'default'}${section.fullWidth ? ' tile--full' : ''}`}
+              >
+                <div className="tile-header">
+                  {section.icon && <span className="tile-icon">{section.icon}</span>}
+                  <div className="tile-titles">
+                    <span className="tile-title">{section.title}</span>
+                    {section.subtitle && <span className="tile-subtitle">{section.subtitle}</span>}
+                  </div>
+                </div>
+                <div className="tile-body">{section.content}</div>
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </main>
   )

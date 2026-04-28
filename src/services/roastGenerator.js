@@ -308,7 +308,129 @@ function generateAwards(standings, teamStats, lowestScore, highestScore, rosterC
   return lines.join('\n\n')
 }
 
-// ─── Main export ─────────────────────────────────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+// Strip the first two lines of a section (emoji title + dash separator)
+// so the tile header can display the title separately from the content.
+function stripHeader(text) {
+  if (!text) return ''
+  const lines = text.split('\n')
+  let i = 0
+  if (i < lines.length) i++ // emoji + title line
+  if (i < lines.length && /^[─═]+$/.test(lines[i].trim())) i++ // separator
+  while (i < lines.length && !lines[i].trim()) i++ // leading blank lines
+  return lines.slice(i).join('\n').trim()
+}
+
+// ─── Structured export (used by tile UI) ─────────────────────────────────────
+
+export function generateRoastSections(leagueData) {
+  const {
+    leagueName, standings, draftPicks = [], weeklyMatchups = [],
+    rosterChanges = [], teamPlayerHighlights = {},
+    currentPeriod = 34, totalPeriods = 38
+  } = leagueData
+
+  if (!standings?.length) throw new Error('No standings data available.')
+
+  const { winner, last } = analyzeStandings(standings)
+  const weekly = analyzeWeekly(weeklyMatchups)
+  const round1 = draftPicks.filter(p => p.round === 1).sort((a, b) => a.pickNumber - b.pickNumber)
+  const pick1 = round1[0]
+  const pick1Team = pick1 ? standings.find(t => t.teamName === pick1.teamName) : null
+  const isComplete = currentPeriod >= totalPeriods
+  const totalFPts = Math.round(standings.reduce((s, t) => s + t.totalPointsFor, 0))
+
+  const out = []
+
+  // Intro — full width summary bar
+  out.push({
+    id: 'intro', icon: '📊', fullWidth: true, accent: 'default',
+    title: `Gameweek ${currentPeriod} of ${totalPeriods}`,
+    subtitle: leagueName,
+    content: [
+      `${standings.length} managers · ${currentPeriod} gameweek${currentPeriod !== 1 ? 's' : ''} played · ${totalFPts.toLocaleString()} total fantasy points`,
+      isComplete ? 'The season is done.' : `${totalPeriods - currentPeriod} gameweek${totalPeriods - currentPeriod !== 1 ? 's' : ''} still to play.`
+    ].join('\n\n')
+  })
+
+  // Champions
+  const champText = generateChampions(winner, standings, currentPeriod, totalPeriods)
+  if (champText) out.push({
+    id: 'leaders', icon: '🏆', accent: 'gold',
+    title: isComplete ? 'Champions' : 'Current Leaders',
+    subtitle: winner.teamName,
+    content: stripHeader(champText)
+  })
+
+  // Wooden spoon
+  const spoonText = generateWoodenSpoon(last, standings, weekly.teamStats || {}, currentPeriod, totalPeriods)
+  if (spoonText) out.push({
+    id: 'spoon', icon: '🥄', accent: 'red',
+    title: 'Bottom of the Table',
+    subtitle: last.teamName,
+    content: stripHeader(spoonText)
+  })
+
+  // Weekly drama
+  if (weekly.lowestScore?.team) {
+    const weeklyText = generateWeeklyDrama(weekly.lowestScore, weekly.highestScore, weekly.biggestMargin, weekly.closestGame, weekly.teamStats, weeklyMatchups)
+    if (weeklyText) out.push({
+      id: 'weekly', icon: '⚡', accent: 'blue', fullWidth: true,
+      title: 'Notable Moments',
+      subtitle: weeklyMatchups.length ? `GW1 – GW${weeklyMatchups.length}` : '',
+      content: stripHeader(weeklyText)
+    })
+  }
+
+  // Squad report
+  const squadText = generatePlayerHighlights(standings, teamPlayerHighlights)
+  if (squadText) out.push({
+    id: 'squad', icon: '👤', accent: 'green', fullWidth: true,
+    title: 'Squad Report',
+    content: stripHeader(squadText)
+  })
+
+  // Draft
+  if (draftPicks.length) {
+    const draftText = generateDraftSection(pick1, pick1Team, round1, standings)
+    if (draftText) out.push({
+      id: 'draft', icon: '📋', accent: 'teal',
+      title: 'Draft Day',
+      content: stripHeader(draftText)
+    })
+  }
+
+  // Should have sold
+  const sellText = generateShouldHaveSold(standings, teamPlayerHighlights)
+  if (sellText) out.push({
+    id: 'sell', icon: '🚮', accent: 'red', fullWidth: true,
+    title: 'Should Have Been Transferred Out',
+    content: stripHeader(sellText)
+  })
+
+  // Transfers
+  if (rosterChanges.length) {
+    const transferText = generateTransfers(rosterChanges)
+    if (transferText) out.push({
+      id: 'transfers', icon: '🔄', accent: 'teal',
+      title: 'Transfer Activity',
+      content: stripHeader(transferText)
+    })
+  }
+
+  // Awards
+  const awardsText = generateAwards(standings, weekly.teamStats || {}, weekly.lowestScore || {}, weekly.highestScore || {}, rosterChanges, currentPeriod, totalPeriods)
+  if (awardsText) out.push({
+    id: 'awards', icon: '🏅', accent: 'gold', fullWidth: true,
+    title: isComplete ? 'End of Season Awards' : 'Awards So Far',
+    content: stripHeader(awardsText)
+  })
+
+  return out
+}
+
+// ─── String export (kept for compatibility) ───────────────────────────────────
 
 export function generateRoast(leagueData) {
   const {
