@@ -69,7 +69,7 @@ function seasonLabel(current, total) {
 // ─── Section generators ──────────────────────────────────────────────────────
 
 function generateIntro(leagueName, standings, weeklyMatchups, currentPeriod, totalPeriods) {
-  const played = weeklyMatchups.length
+  const played = currentPeriod
   const remaining = totalPeriods - currentPeriod
   const isComplete = currentPeriod >= totalPeriods
   const totalFPts = Math.round(standings.reduce((s, t) => s + t.totalPointsFor, 0))

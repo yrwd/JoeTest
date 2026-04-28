@@ -53,12 +53,14 @@ export async function fetchLeagueData(leagueInput, onProgress) {
   const leagueId = extractLeagueId(leagueInput)
 
   onProgress?.('Fetching standings...')
-  // Use view:SCHEDULE to get ALL gameweek results, not just the last 2
-  const [rawStandings, scheduleData, richStandings] = await Promise.all([
+  const [rawStandings, richStandings] = await Promise.all([
     fetch(`${FANTRAX}/fxea/general/getStandings?leagueId=${leagueId}`).then(r => r.json()),
-    fxpaPost(leagueId, 'getStandings', { view: 'SCHEDULE' }),
     fxpaPost(leagueId, 'getStandings')
   ])
+
+  onProgress?.('Fetching match results...')
+  // Fetch schedule separately — parallel POST calls to the same endpoint can silently fail through proxies
+  const scheduleData = await fxpaPost(leagueId, 'getStandings', { view: 'SCHEDULE' }).catch(() => null)
 
   if (!Array.isArray(rawStandings) || rawStandings.length === 0) {
     throw new Error('League not found or set to private. Make your Fantrax league public in league settings.')
@@ -70,11 +72,12 @@ export async function fetchLeagueData(leagueInput, onProgress) {
   onProgress?.('Loading player database...')
   const playerDb = await fetch(`${FANTRAX}/fxea/general/getPlayerIds?sport=EPL`).then(r => r.json())
 
-  // Determine played periods
-  const allPeriods = richStandings?.displayedLists?.periods || []
   const totalPeriods = 38
-  // Find the last period that has actually been played by checking displayedSelections
-  const currentPeriod = richStandings?.displayedSelections?.period || allPeriods.length || 34
+  // Derive current period from the standings record — W+D+L = games played = gameweeks played.
+  // This is always accurate regardless of what the API's displayedSelections field says.
+  const firstTeam = rawStandings[0]
+  const [fw = 0, fd = 0, fl = 0] = (firstTeam?.points || '').split('-').map(Number)
+  const currentPeriod = Math.max(fw + fd + fl, 1)
 
   onProgress?.('Fetching rosters...')
   const [roster1, rosterCurrent] = await Promise.all([
@@ -136,7 +139,8 @@ export async function fetchLeagueData(leagueInput, onProgress) {
   }
 
   // --- Process ALL weekly matchups via SCHEDULE view ---
-  const scheduleTableList = scheduleData?.tableList || []
+  // Use schedule view if it returned data, otherwise fall back to the YTD view (last 2 weeks)
+  const scheduleTableList = (scheduleData?.tableList?.length ? scheduleData : richStandings)?.tableList || []
   const weeklyMatchups = scheduleTableList
     .filter(t => t.tableType === 'H2hPointsBased2' && t.caption)
     .map(t => ({
