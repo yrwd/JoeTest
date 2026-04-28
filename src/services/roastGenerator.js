@@ -308,6 +308,124 @@ function generateAwards(standings, teamStats, lowestScore, highestScore, rosterC
   return lines.join('\n\n')
 }
 
+// ─── New section generators ───────────────────────────────────────────────────
+
+function generateDraftAnalysisSection(topPicks, worstPicks) {
+  const lines = []
+
+  if (topPicks.length) {
+    lines.push('BEST PICKS')
+    topPicks.forEach((p, i) => {
+      lines.push(`${i + 1}. ${p.name} (${p.teamName}, R${p.draftRound} P${p.draftPick}) — ${fmt(p.totalPts)} pts${p.avgPts > 0 ? `, avg ${fmt(p.avgPts)}/GW` : ''}`)
+    })
+  }
+
+  if (worstPicks.length) {
+    if (lines.length) lines.push('')
+    lines.push('BUSTS — Early picks that were dropped')
+    worstPicks.forEach((p, i) => {
+      lines.push(`${i + 1}. ${p.playerName} (${p.teamName}, R${p.draftRound} P${p.draftPick}) — no longer on the squad`)
+    })
+  }
+
+  return lines.join('\n')
+}
+
+function generateTransferAnalysisSection(rosterChanges, bestIncomings, worstTrade) {
+  const lines = []
+  const sorted = [...rosterChanges].sort((a, b) => (b.added.length + b.removed.length) - (a.added.length + a.removed.length))
+
+  if (sorted.length) {
+    const most = sorted[0]
+    const least = sorted[sorted.length - 1]
+    const mostTotal = most.added.length + most.removed.length
+    const leastTotal = least.added.length + least.removed.length
+
+    lines.push(`MOST ACTIVE: ${most.teamName} — ${mostTotal} move${mostTotal !== 1 ? 's' : ''}`)
+    if (most.added.length) lines.push(`  Signed: ${most.added.slice(0, 5).join(', ')}`)
+    if (most.removed.length) lines.push(`  Moved on: ${most.removed.slice(0, 5).join(', ')}`)
+
+    lines.push('')
+    lines.push(`LEAST ACTIVE: ${least.teamName} — ${leastTotal === 0 ? 'zero changes all season' : `${leastTotal} move${leastTotal !== 1 ? 's' : ''}`}`)
+  }
+
+  if (bestIncomings.length) {
+    lines.push('')
+    lines.push('BEST PLAYERS TRANSFERRED IN')
+    bestIncomings.forEach((p, i) => {
+      lines.push(`${i + 1}. ${p.name} → ${p.teamName} — ${fmt(p.totalPts)} pts${p.avgPts > 0 ? `, avg ${fmt(p.avgPts)}/GW` : ''}`)
+    })
+  }
+
+  return lines.join('\n')
+}
+
+function analyzeBiggestUpset(weeklyMatchups, standings) {
+  const rankMap = Object.fromEntries(standings.map(t => [t.teamName, t.rank]))
+  let best = null
+  for (const gw of weeklyMatchups) {
+    for (const m of gw.matchups) {
+      if (!m.awayFpts && !m.homeFpts) continue
+      const winnerIsAway = m.awayFpts > m.homeFpts
+      const winner = winnerIsAway ? m.awayTeam : m.homeTeam
+      const loser = winnerIsAway ? m.homeTeam : m.awayTeam
+      const winFpts = Math.max(m.awayFpts, m.homeFpts)
+      const loseFpts = Math.min(m.awayFpts, m.homeFpts)
+      const winnerRank = rankMap[winner] || 0
+      const loserRank = rankMap[loser] || 0
+      const margin = winFpts - loseFpts
+      // Upset = winner has a worse final standing than loser
+      if (winnerRank > loserRank && (!best || margin > best.margin)) {
+        best = { winner, loser, winFpts, loseFpts, margin, gw: gw.caption, winnerRank, loserRank }
+      }
+    }
+  }
+  return best
+}
+
+function generateAwardsSection(weeklyMatchups, standings, top5Scorers, worstTrade, currentPeriod, totalPeriods) {
+  const isComplete = currentPeriod >= totalPeriods
+  const lines = []
+
+  // Biggest win
+  const { biggestMargin } = analyzeWeekly(weeklyMatchups)
+  if (biggestMargin?.winner) {
+    lines.push(`BIGGEST WIN`)
+    lines.push(`${biggestMargin.winner} ${fmt(biggestMargin.winFpts)} — ${fmt(biggestMargin.loseFpts)} ${biggestMargin.loser}`)
+    lines.push(`${biggestMargin.gw} · margin of ${fmt(biggestMargin.margin)} pts`)
+  }
+
+  // Top 5 scorers
+  if (top5Scorers.length) {
+    if (lines.length) lines.push('')
+    lines.push('TOP 5 HIGHEST SCORING PLAYERS')
+    top5Scorers.forEach((p, i) => {
+      lines.push(`${i + 1}. ${p.name} (${p.teamName}) — ${fmt(p.totalPts)} pts${p.avgPts > 0 ? `, avg ${fmt(p.avgPts)}/GW` : ''}`)
+    })
+  }
+
+  // Biggest upset
+  const upset = analyzeBiggestUpset(weeklyMatchups, standings)
+  if (upset) {
+    if (lines.length) lines.push('')
+    lines.push('BIGGEST UPSET')
+    lines.push(`${upset.winner} (${ordinal(upset.winnerRank)}) beat ${upset.loser} (${ordinal(upset.loserRank)}) ${fmt(upset.winFpts)}–${fmt(upset.loseFpts)}`)
+    lines.push(`${upset.gw} · ${ordinal(upset.loserRank)}-place team beaten by ${ordinal(upset.winnerRank)}-place team`)
+  }
+
+  // Worst trade
+  if (worstTrade) {
+    if (lines.length) lines.push('')
+    lines.push('WORST TRANSFER OF THE SEASON')
+    lines.push(`${worstTrade.droppedBy} dropped ${worstTrade.playerName}, who went on to score ${fmt(worstTrade.totalPts)} pts for ${worstTrade.pickedUpBy}.`)
+  }
+
+  lines.push('')
+  lines.push(isComplete ? 'Season complete.' : `${totalPeriods - currentPeriod} gameweek${totalPeriods - currentPeriod !== 1 ? 's' : ''} remaining.`)
+
+  return lines.join('\n')
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 // Strip the first two lines of a section (emoji title + dash separator)
@@ -326,35 +444,20 @@ function stripHeader(text) {
 
 export function generateRoastSections(leagueData) {
   const {
-    leagueName, standings, draftPicks = [], weeklyMatchups = [],
+    standings, draftPicks = [], weeklyMatchups = [],
     rosterChanges = [], teamPlayerHighlights = {},
-    currentPeriod = 34, totalPeriods = 38
+    currentPeriod = 34, totalPeriods = 38,
+    draftAnalysis = {}, transferAnalysis = {}, top5Scorers = []
   } = leagueData
 
   if (!standings?.length) throw new Error('No standings data available.')
 
   const { winner, last } = analyzeStandings(standings)
   const weekly = analyzeWeekly(weeklyMatchups)
-  const round1 = draftPicks.filter(p => p.round === 1).sort((a, b) => a.pickNumber - b.pickNumber)
-  const pick1 = round1[0]
-  const pick1Team = pick1 ? standings.find(t => t.teamName === pick1.teamName) : null
   const isComplete = currentPeriod >= totalPeriods
-  const totalFPts = Math.round(standings.reduce((s, t) => s + t.totalPointsFor, 0))
-
   const out = []
 
-  // Intro — full width summary bar
-  out.push({
-    id: 'intro', icon: '📊', fullWidth: true, accent: 'default',
-    title: `Gameweek ${currentPeriod} of ${totalPeriods}`,
-    subtitle: leagueName,
-    content: [
-      `${standings.length} managers · ${currentPeriod} gameweek${currentPeriod !== 1 ? 's' : ''} played · ${totalFPts.toLocaleString()} total fantasy points`,
-      isComplete ? 'The season is done.' : `${totalPeriods - currentPeriod} gameweek${totalPeriods - currentPeriod !== 1 ? 's' : ''} still to play.`
-    ].join('\n\n')
-  })
-
-  // Champions
+  // 1. Current Leaders
   const champText = generateChampions(winner, standings, currentPeriod, totalPeriods)
   if (champText) out.push({
     id: 'leaders', icon: '🏆', accent: 'gold',
@@ -363,7 +466,7 @@ export function generateRoastSections(leagueData) {
     content: stripHeader(champText)
   })
 
-  // Wooden spoon
+  // 2. Bottom of the Table
   const spoonText = generateWoodenSpoon(last, standings, weekly.teamStats || {}, currentPeriod, totalPeriods)
   if (spoonText) out.push({
     id: 'spoon', icon: '🥄', accent: 'red',
@@ -372,59 +475,28 @@ export function generateRoastSections(leagueData) {
     content: stripHeader(spoonText)
   })
 
-  // Weekly drama
-  if (weekly.lowestScore?.team) {
-    const weeklyText = generateWeeklyDrama(weekly.lowestScore, weekly.highestScore, weekly.biggestMargin, weekly.closestGame, weekly.teamStats, weeklyMatchups)
-    if (weeklyText) out.push({
-      id: 'weekly', icon: '⚡', accent: 'blue', fullWidth: true,
-      title: 'Notable Moments',
-      subtitle: weeklyMatchups.length ? `GW1 – GW${weeklyMatchups.length}` : '',
-      content: stripHeader(weeklyText)
-    })
-  }
-
-  // Squad report
-  const squadText = generatePlayerHighlights(standings, teamPlayerHighlights)
-  if (squadText) out.push({
-    id: 'squad', icon: '👤', accent: 'green', fullWidth: true,
-    title: 'Squad Report',
-    content: stripHeader(squadText)
+  // 3. Draft Day — top 3 picks + worst 3 picks
+  const { topPicks = [], worstPicks = [] } = draftAnalysis
+  if (topPicks.length || worstPicks.length) out.push({
+    id: 'draft', icon: '📋', accent: 'teal',
+    title: 'Draft Day',
+    content: generateDraftAnalysisSection(topPicks, worstPicks)
   })
 
-  // Draft
-  if (draftPicks.length) {
-    const draftText = generateDraftSection(pick1, pick1Team, round1, standings)
-    if (draftText) out.push({
-      id: 'draft', icon: '📋', accent: 'teal',
-      title: 'Draft Day',
-      content: stripHeader(draftText)
-    })
-  }
-
-  // Should have sold
-  const sellText = generateShouldHaveSold(standings, teamPlayerHighlights)
-  if (sellText) out.push({
-    id: 'sell', icon: '🚮', accent: 'red', fullWidth: true,
-    title: 'Should Have Been Transferred Out',
-    content: stripHeader(sellText)
+  // 4. Transfer Activity — most/least active + best incoming
+  const { bestIncomings = [], worstTrade = null } = transferAnalysis
+  if (rosterChanges.length) out.push({
+    id: 'transfers', icon: '🔄', accent: 'teal',
+    title: 'Transfer Activity',
+    content: generateTransferAnalysisSection(rosterChanges, bestIncomings, worstTrade)
   })
 
-  // Transfers
-  if (rosterChanges.length) {
-    const transferText = generateTransfers(rosterChanges)
-    if (transferText) out.push({
-      id: 'transfers', icon: '🔄', accent: 'teal',
-      title: 'Transfer Activity',
-      content: stripHeader(transferText)
-    })
-  }
-
-  // Awards
-  const awardsText = generateAwards(standings, weekly.teamStats || {}, weekly.lowestScore || {}, weekly.highestScore || {}, rosterChanges, currentPeriod, totalPeriods)
-  if (awardsText) out.push({
+  // 5. Awards
+  const awardsContent = generateAwardsSection(weeklyMatchups, standings, top5Scorers, worstTrade, currentPeriod, totalPeriods)
+  if (awardsContent) out.push({
     id: 'awards', icon: '🏅', accent: 'gold', fullWidth: true,
     title: isComplete ? 'End of Season Awards' : 'Awards So Far',
-    content: stripHeader(awardsText)
+    content: awardsContent
   })
 
   return out

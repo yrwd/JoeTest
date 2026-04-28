@@ -194,6 +194,66 @@ export async function fetchLeagueData(leagueInput, onProgress) {
     }
   }
 
+  // Flatten all currently rostered players with draft info
+  const allCurrentPlayers = []
+  for (const [teamName, players] of Object.entries(statsByTeam)) {
+    const teamDraftMap = Object.fromEntries((draftByTeam[teamName] || []).map(d => [d.scorerId, d]))
+    for (const p of players) {
+      const d = teamDraftMap[p.id]
+      allCurrentPlayers.push({ ...p, teamName, draftRound: d?.round, draftPick: d?.pickNumber })
+    }
+  }
+
+  // Top 3 picks: drafted players still on team with highest YTD pts
+  const topPicks = [...allCurrentPlayers]
+    .filter(p => p.draftRound && p.totalPts > 0)
+    .sort((a, b) => b.totalPts - a.totalPts)
+    .slice(0, 3)
+
+  // Worst 3 picks: rounds 1–4 players who were dropped (not in current roster)
+  const currentPlayerIds = new Set(allCurrentPlayers.map(p => p.id))
+  const worstPicks = allPicks
+    .filter(p => p.round <= 4 && !currentPlayerIds.has(p.scorerId))
+    .sort((a, b) => a.round - b.round || a.pickNumber - b.pickNumber)
+    .slice(0, 3)
+    .map(p => ({
+      playerName: playerDb[p.scorerId]?.name || p.scorerId,
+      teamName: teamById[p.teamId] || p.teamId,
+      draftRound: p.round,
+      draftPick: p.pickNumber
+    }))
+
+  // Best players transferred in (added mid-season, currently rostered, high pts)
+  const incomingPerformers = []
+  for (const change of rosterChanges) {
+    const teamPlayers = statsByTeam[change.teamName] || []
+    for (const addedName of change.added) {
+      const player = teamPlayers.find(pl => pl.name === addedName)
+      if (player?.totalPts > 0) incomingPerformers.push({ ...player, teamName: change.teamName })
+    }
+  }
+  const bestIncomings = incomingPerformers.sort((a, b) => b.totalPts - a.totalPts).slice(0, 3)
+
+  // Worst trade: dropped player who then performed well for another team
+  let worstTrade = null
+  for (const change of rosterChanges) {
+    for (const droppedName of change.removed) {
+      for (const [otherTeam, players] of Object.entries(statsByTeam)) {
+        if (otherTeam === change.teamName) continue
+        const p = players.find(pl => pl.name === droppedName)
+        if (p?.totalPts > 0 && (!worstTrade || p.totalPts > worstTrade.totalPts)) {
+          worstTrade = { playerName: droppedName, droppedBy: change.teamName, pickedUpBy: otherTeam, totalPts: p.totalPts, avgPts: p.avgPts }
+        }
+      }
+    }
+  }
+
+  // Top 5 scorers across all teams
+  const top5Scorers = [...allCurrentPlayers]
+    .filter(p => p.totalPts > 0)
+    .sort((a, b) => b.totalPts - a.totalPts)
+    .slice(0, 5)
+
   return {
     leagueId,
     leagueName: richStandings?.miscData?.heading || 'Fantasy League',
@@ -203,6 +263,9 @@ export async function fetchLeagueData(leagueInput, onProgress) {
     draftPicks,
     weeklyMatchups,
     rosterChanges,
-    teamPlayerHighlights
+    teamPlayerHighlights,
+    draftAnalysis: { topPicks, worstPicks },
+    transferAnalysis: { bestIncomings, worstTrade },
+    top5Scorers
   }
 }
