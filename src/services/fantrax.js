@@ -181,6 +181,18 @@ export async function fetchLeagueData(leagueInput, onProgress) {
     }
   }
 
+  // Detect team name changes (period 1 name vs current name)
+  const nameChanges = []
+  if (roster1?.rosters && rosterCurrent?.rosters) {
+    for (const teamId of Object.keys(rosterCurrent.rosters)) {
+      const oldName = roster1.rosters[teamId]?.teamName
+      const newName = rosterCurrent.rosters[teamId]?.teamName
+      if (oldName && newName && oldName !== newName) {
+        nameChanges.push({ oldName, newName })
+      }
+    }
+  }
+
   return {
     leagueId,
     leagueName: richStandings?.miscData?.heading || 'Fantasy League',
@@ -190,6 +202,7 @@ export async function fetchLeagueData(leagueInput, onProgress) {
     draftPicks,
     weeklyMatchups,
     rosterChanges,
+    nameChanges,
     draftAnalysis: { topPicks, worstPicks },
     transferAnalysis: { bestIncomings }
   }

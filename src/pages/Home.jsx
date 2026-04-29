@@ -54,7 +54,7 @@ export default function Home() {
             disabled={busy}
           />
           <button onClick={handleRoast} disabled={busy || !leagueUrl.trim()} className="roast-btn">
-            {busy ? '⏳ Loading...' : '🔥 Roast My League'}
+            {busy ? '⏳ Loading...' : '🔍 Analyse My League'}
           </button>
         </div>
         <p className="hint">Your league must be set to <strong>public</strong> in Fantrax settings.</p>

@@ -387,7 +387,7 @@ function analyzeBiggestUpset(weeklyMatchups, standings) {
   return best
 }
 
-function generateAwardsSection(weeklyMatchups, standings, currentPeriod, totalPeriods) {
+function generateAwardsSection(weeklyMatchups, standings, currentPeriod, totalPeriods, nameChanges) {
   try {
     const isComplete = currentPeriod >= totalPeriods
     const remaining = totalPeriods - currentPeriod
@@ -411,6 +411,28 @@ function generateAwardsSection(weeklyMatchups, standings, currentPeriod, totalPe
       out.push('')
     }
 
+    // Highest and lowest scoring gameweeks (total pts across all matches)
+    if (weeklyMatchups && weeklyMatchups.length > 0) {
+      let highGW = null, lowGW = null
+      for (const gw of weeklyMatchups) {
+        const total = gw.matchups.reduce((sum, m) => sum + (m.awayFpts || 0) + (m.homeFpts || 0), 0)
+        if (total > 0) {
+          if (!highGW || total > highGW.total) highGW = { caption: gw.caption, total }
+          if (!lowGW || total < lowGW.total) lowGW = { caption: gw.caption, total }
+        }
+      }
+      if (highGW) {
+        out.push(`HIGHEST SCORING GAMEWEEK: ${highGW.caption}`)
+        out.push(`${fmt(highGW.total)} combined points scored across all matches`)
+        out.push('')
+      }
+      if (lowGW && lowGW.caption !== highGW?.caption) {
+        out.push(`LOWEST SCORING GAMEWEEK: ${lowGW.caption}`)
+        out.push(`${fmt(lowGW.total)} combined points — a tough week for everyone`)
+        out.push('')
+      }
+    }
+
     // Standings-based — always available
     const s = standings || []
     if (s.length > 0) {
@@ -427,6 +449,13 @@ function generateAwardsSection(weeklyMatchups, standings, currentPeriod, totalPe
       out.push(`${first.teamName}: ${fmt(first.totalPointsFor || 0)} pts`)
       out.push(`${last.teamName}: ${fmt(last.totalPointsFor || 0)} pts`)
       out.push(`Gap: ${fmt((first.totalPointsFor || 0) - (last.totalPointsFor || 0))} pts over ${currentPeriod} GWs`)
+      out.push('')
+    }
+
+    // Team name changes
+    if (nameChanges && nameChanges.length > 0) {
+      out.push('MOST TEAM NAME CHANGES')
+      nameChanges.forEach(c => out.push(`${c.oldName} → ${c.newName}`))
       out.push('')
     }
 
@@ -457,7 +486,7 @@ export function generateRoastSections(leagueData) {
   const {
     standings, weeklyMatchups = [],
     rosterChanges = [], currentPeriod = 34, totalPeriods = 38,
-    draftAnalysis = {}, transferAnalysis = {}
+    draftAnalysis = {}, transferAnalysis = {}, nameChanges = []
   } = leagueData
 
   if (!standings?.length) throw new Error('No standings data available.')
@@ -505,7 +534,7 @@ export function generateRoastSections(leagueData) {
   out.push({
     id: 'awards', icon: '🏅', accent: 'gold', fullWidth: true,
     title: isComplete ? 'End of Season Awards' : 'Awards So Far',
-    content: generateAwardsSection(weeklyMatchups, standings, currentPeriod, totalPeriods)
+    content: generateAwardsSection(weeklyMatchups, standings, currentPeriod, totalPeriods, nameChanges)
   })
 
   return out
