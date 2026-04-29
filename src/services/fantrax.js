@@ -97,16 +97,8 @@ export async function fetchLeagueData(leagueInput, onProgress) {
       club: playerDb[p.scorerId]?.team || ''
     }))
 
-  const draftByTeam = {}
-  for (const p of allPicks) {
-    const tName = teamById[p.teamId] || p.teamId
-    if (!draftByTeam[tName]) draftByTeam[tName] = []
-    draftByTeam[tName].push({ scorerId: p.scorerId, round: p.round, pickNumber: p.pickNumber, playerName: playerDb[p.scorerId]?.name || '' })
-  }
-
-  // Build current roster IDs from the actual roster endpoint — this is reliable
-  // whereas using player stats (getPlayerStats) is not: that endpoint only exposes
-  // free agents and never returns rostered players, regardless of filter params.
+  // Build current roster IDs from the actual roster endpoint — reliable;
+  // getPlayerStats only returns free agents so can't be used for rostered players.
   const currentRosterIds = new Set()
   for (const team of Object.values(rosterCurrent?.rosters || {})) {
     for (const p of (team.rosterItems || [])) currentRosterIds.add(p.id)
