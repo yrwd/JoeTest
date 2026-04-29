@@ -241,10 +241,23 @@ function analyzeUnlucky(weeklyMatchups) {
 
 function generateBogeySection(weeklyMatchups) {
   if (!weeklyMatchups.length) return 'Match data needed for head-to-head records.'
-  const pairs = analyzeBogeyTeams(weeklyMatchups)
-  if (!pairs.length) return 'No dominant head-to-head patterns yet — records are fairly even across all meetings.'
-  return pairs
-    .map(p => `${p.dominant} owns ${p.submissive}: ${p.domWins}-${p.subWins} from ${p.total} meetings`)
+  const perfectPairs = analyzeBogeyTeams(weeklyMatchups).filter(p => p.subWins === 0)
+  if (!perfectPairs.length) return 'No perfect head-to-head records yet — every team has won at least once against each opponent they\'ve faced multiple times.'
+
+  const grouped = {}
+  for (const p of perfectPairs) {
+    if (!grouped[p.dominant]) grouped[p.dominant] = []
+    grouped[p.dominant].push(p)
+  }
+
+  const sortedDominants = Object.entries(grouped)
+    .sort((a, b) => b[1].length - a[1].length || b[1].reduce((s, p) => s + p.domWins, 0) - a[1].reduce((s, p) => s + p.domWins, 0))
+
+  return sortedDominants
+    .map(([dominant, victims]) => {
+      const victimList = victims.map(p => `${p.submissive} (${p.domWins}-0)`).join(', ')
+      return `${dominant} — unbeaten vs: ${victimList}`
+    })
     .join('\n')
 }
 
@@ -296,12 +309,12 @@ function generateSeasonStoriesSection(weeklyMatchups, standings, worstPicks) {
     lines.push('')
   }
 
-  // Biggest high-ADP name that didn't make it — earliest round pick that was dropped
-  if (worstPicks && worstPicks.length > 0) {
-    const p = worstPicks[0]
-    const ctx = [p.position, p.club].filter(Boolean).join(', ')
+  // Biggest high-ADP name that left the EPL entirely — exclude in-league transfers (e.g. CP→Arsenal)
+  const departure = worstPicks?.find(p => !p.stillInEpl)
+  if (departure) {
+    const ctx = [departure.position, departure.club].filter(Boolean).join(', ')
     lines.push('BIGGEST HIGH-PROFILE DEPARTURE')
-    lines.push(`${p.playerName}${ctx ? ` (${ctx})` : ''} — picked in R${p.draftRound} by ${p.teamName}, no longer in the league`)
+    lines.push(`${departure.playerName}${ctx ? ` (${ctx})` : ''} — picked in R${departure.draftRound} by ${departure.teamName}, no longer on the squad`)
     lines.push('One of the most anticipated picks of the draft. Didn\'t last the season.')
   }
 

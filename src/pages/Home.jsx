@@ -32,7 +32,7 @@ export default function Home() {
     <main className="container">
       <header className="hero">
         <div className="hero-badge">⚽ Free and no login required</div>
-        <h1>Fantasy League Roaster</h1>
+        <h1>Fantasy Season Review</h1>
         <p>Paste your public Fantrax league URL for a stats-based breakdown of the season so far.</p>
       </header>
 

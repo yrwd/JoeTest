@@ -127,7 +127,10 @@ export async function fetchLeagueData(leagueInput, onProgress) {
       position: playerDb[p.scorerId]?.position || '',
       club: playerDb[p.scorerId]?.team || '',
       teamName: teamById[p.teamId] || p.teamId,
-      draftRound: p.round, draftPick: p.pickNumber
+      draftRound: p.round, draftPick: p.pickNumber,
+      // Players who transferred clubs within the EPL still have a team in playerDb;
+      // only players who left the EPL entirely (e.g. TAA → Real Madrid) have no team.
+      stillInEpl: !!(playerDb[p.scorerId]?.team)
     }))
 
   // --- Transfers ---
