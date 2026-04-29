@@ -388,44 +388,53 @@ function analyzeBiggestUpset(weeklyMatchups, standings) {
 }
 
 function generateAwardsSection(weeklyMatchups, standings, currentPeriod, totalPeriods) {
-  const isComplete = currentPeriod >= totalPeriods
-  const lines = []
-  const sorted = [...standings].sort((a, b) => a.rank - b.rank)
-  const winner = sorted[0]
-  const last = sorted[sorted.length - 1]
+  try {
+    const isComplete = currentPeriod >= totalPeriods
+    const remaining = totalPeriods - currentPeriod
+    const out = []
 
-  // Biggest win from weekly data (if available)
-  const { biggestMargin } = analyzeWeekly(weeklyMatchups)
-  if (biggestMargin?.winner) {
-    lines.push('BIGGEST WIN')
-    lines.push(`${biggestMargin.winner} ${fmt(biggestMargin.winFpts)} — ${fmt(biggestMargin.loseFpts)} ${biggestMargin.loser}`)
-    lines.push(`${biggestMargin.gw} · winning margin: ${fmt(biggestMargin.margin)} pts`)
-    lines.push('')
+    // Biggest win (weekly data — only present when schedule POST works through proxy)
+    const { biggestMargin } = analyzeWeekly(weeklyMatchups || [])
+    if (biggestMargin && biggestMargin.winner) {
+      out.push('BIGGEST WIN')
+      out.push(`${biggestMargin.winner} ${fmt(biggestMargin.winFpts)} — ${fmt(biggestMargin.loseFpts)} ${biggestMargin.loser}`)
+      out.push(`${biggestMargin.gw} · margin: ${fmt(biggestMargin.margin)} pts`)
+      out.push('')
+    }
+
+    // Biggest upset (weekly data)
+    const upset = analyzeBiggestUpset(weeklyMatchups || [], standings || [])
+    if (upset) {
+      out.push('BIGGEST UPSET')
+      out.push(`${upset.winner} (${ordinal(upset.winnerRank)}) beat ${upset.loser} (${ordinal(upset.loserRank)})`)
+      out.push(`${fmt(upset.winFpts)} — ${fmt(upset.loseFpts)} · ${upset.gw}`)
+      out.push('')
+    }
+
+    // Standings-based — always available
+    const s = standings || []
+    if (s.length > 0) {
+      const byPts = [...s].sort((a, b) => (b.totalPointsFor || 0) - (a.totalPointsFor || 0))
+      const byRank = [...s].sort((a, b) => (a.rank || 99) - (b.rank || 99))
+      const topScorer = byPts[0]
+      const first = byRank[0]
+      const last = byRank[byRank.length - 1]
+
+      out.push('MOST POINTS SCORED')
+      out.push(`${topScorer.teamName} — ${fmt(topScorer.totalPointsFor || 0)} pts`)
+      out.push('')
+      out.push('POINTS GAP (1st vs last)')
+      out.push(`${first.teamName}: ${fmt(first.totalPointsFor || 0)} pts`)
+      out.push(`${last.teamName}: ${fmt(last.totalPointsFor || 0)} pts`)
+      out.push(`Gap: ${fmt((first.totalPointsFor || 0) - (last.totalPointsFor || 0))} pts over ${currentPeriod} GWs`)
+      out.push('')
+    }
+
+    out.push(isComplete ? 'Season complete.' : `${remaining} gameweek${remaining !== 1 ? 's' : ''} remaining.`)
+    return out.join('\n')
+  } catch (e) {
+    return `Could not generate awards: ${e.message}\n\n${totalPeriods - currentPeriod} gameweeks remaining.`
   }
-
-  // Biggest upset from weekly data (if available)
-  const upset = analyzeBiggestUpset(weeklyMatchups, standings)
-  if (upset) {
-    lines.push('BIGGEST UPSET')
-    lines.push(`${upset.winner} (${ordinal(upset.winnerRank)} place) beat ${upset.loser} (${ordinal(upset.loserRank)} place)`)
-    lines.push(`${fmt(upset.winFpts)} — ${fmt(upset.loseFpts)} · ${upset.gw}`)
-    lines.push('')
-  }
-
-  // Always available: standings-based stats
-  lines.push('MOST POINTS SCORED')
-  const topScorer = [...standings].sort((a, b) => b.totalPointsFor - a.totalPointsFor)[0]
-  lines.push(`${topScorer.teamName} — ${fmt(topScorer.totalPointsFor)} pts (avg ${fmt(topScorer.totalPointsFor / currentPeriod)}/GW)`)
-
-  lines.push('')
-  lines.push('POINTS GAP — Top to Bottom')
-  lines.push(`${winner.teamName}: ${fmt(winner.totalPointsFor)} pts`)
-  lines.push(`${last.teamName}: ${fmt(last.totalPointsFor)} pts`)
-  lines.push(`Difference: ${fmt(winner.totalPointsFor - last.totalPointsFor)} pts over ${currentPeriod} gameweeks`)
-
-  lines.push('')
-  lines.push(isComplete ? 'Season complete.' : `${totalPeriods - currentPeriod} gameweek${totalPeriods - currentPeriod !== 1 ? 's' : ''} remaining.`)
-  return lines.join('\n')
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
