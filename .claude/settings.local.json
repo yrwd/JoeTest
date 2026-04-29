@@ -66,7 +66,8 @@
       "Bash(curl -s \"https://www.fantrax.com/fxea/general/getTeamRosters?leagueId=xatppaqhmcxmztlr&period=34\")",
       "Bash(curl -s -X POST \"https://www.fantrax.com/fxpa/req?leagueId=xatppaqhmcxmztlr\" -H \"Content-Type: application/json\" -d '{\"msgs\":[{\"method\":\"getStandings\",\"data\":{\"leagueId\":\"xatppaqhmcxmztlr\",\"view\":\"SCHEDULE\"}}]}' -o /tmp/sched2.json)",
       "Bash(npm audit *)",
-      "Bash(npm show *)"
+      "Bash(npm show *)",
+      "Bash(node -e \"console.log\\(require\\('./node_modules/vite/package.json'\\).version\\)\")"
     ]
   }
 }

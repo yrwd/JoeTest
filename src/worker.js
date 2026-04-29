@@ -1,15 +1,11 @@
 /**
- * Fantrax API Proxy — Cloudflare Pages Function
+ * Cloudflare Worker entry point
  *
- * Handles all requests to /fantrax/* and forwards them to www.fantrax.com.
- * The browser can't call Fantrax directly due to CORS, so this function acts
- * as a same-origin proxy.
+ * Routes /fantrax/* requests through the Fantrax API proxy.
+ * Everything else is served from the built React app (dist/).
  *
- * Security measures:
- *  - ALLOWED_PATHS: only the 4 endpoints the app needs are forwarded
- *  - ALLOWED_FXPA_METHODS: POST bodies to /fxpa/req are validated so callers
- *    can't use our proxy to invoke arbitrary Fantrax API methods
- *  - CORS: restricted to the deployed site URL (set SITE_URL in Cloudflare env vars)
+ * Set SITE_URL in Cloudflare Workers & Pages → Settings → Variables & Secrets
+ * to your deployed domain so CORS is restricted to your site only.
  */
 
 const ALLOWED_PATHS = new Set([
@@ -21,12 +17,23 @@ const ALLOWED_PATHS = new Set([
 
 const ALLOWED_FXPA_METHODS = new Set(['getStandings', 'getDraftResults'])
 
-export async function onRequest(context) {
-  const { request, env } = context
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url)
+
+    if (url.pathname.startsWith('/fantrax/')) {
+      return handleFantraxProxy(request, env)
+    }
+
+    // Fall through to static assets (the React app)
+    return env.ASSETS.fetch(request)
+  },
+}
+
+async function handleFantraxProxy(request, env) {
   const url = new URL(request.url)
   const pathname = url.pathname.replace(/^\/fantrax/, '')
 
-  // Block any path not on the allowlist
   if (!ALLOWED_PATHS.has(pathname)) {
     return new Response('Not allowed', { status: 403, headers: { 'Content-Type': 'text/plain' } })
   }
@@ -36,7 +43,6 @@ export async function onRequest(context) {
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     const bodyText = await request.text()
 
-    // For /fxpa/req, validate the Fantrax method name inside the POST body
     if (pathname === '/fxpa/req') {
       try {
         const parsed = JSON.parse(bodyText)
@@ -52,8 +58,6 @@ export async function onRequest(context) {
     options.body = bodyText
   }
 
-  // CORS: allow the deployed site and localhost for local dev
-  // Set SITE_URL in Cloudflare Pages environment variables dashboard
   const origin = request.headers.get('Origin') || ''
   const siteUrl = env.SITE_URL || ''
   const allowOrigin = (siteUrl && origin === siteUrl) || origin.startsWith('http://localhost')
