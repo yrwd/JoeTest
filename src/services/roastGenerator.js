@@ -355,8 +355,8 @@ function generateTransferAnalysisSection(rosterChanges, bestIncomings) {
 
   if (bestIncomings.length) {
     lines.push('')
-    lines.push('BEST PLAYERS TRANSFERRED IN — now starting regulars')
-    bestIncomings.forEach((p, i) => {
+    lines.push('BEST PLAYERS TRANSFERRED IN (top 5)')
+    bestIncomings.slice(0, 5).forEach((p, i) => {
       const ctx = [p.position, p.club].filter(Boolean).join(', ')
       lines.push(`${i + 1}. ${p.playerName}${ctx ? ` (${ctx})` : ''} → ${p.teamName}`)
     })
