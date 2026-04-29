@@ -433,9 +433,9 @@ export function generateRoastSections(leagueData) {
 
   out.push({ id: 'bogey', icon: '👻', accent: 'blue', title: 'Bogey Teams', content: generateBogeySection(weeklyMatchups, standings) })
 
-  out.push({ id: 'stories', icon: '📈', accent: 'green', fullWidth: true, title: 'Season Stories', content: generateSeasonStoriesSection(weeklyMatchups, standings) })
-
   out.push({ id: 'undrafted', icon: '🔍', accent: 'green', title: 'Best Undrafted Pickups', content: generateUndraftedSection(undraftedPickups) })
+
+  out.push({ id: 'stories', icon: '📈', accent: 'green', fullWidth: true, title: 'Season Stories', content: generateSeasonStoriesSection(weeklyMatchups, standings) })
 
   out.push({ id: 'awards', icon: '🏅', accent: 'gold', fullWidth: true, title: isComplete ? 'End of Season Awards' : 'Awards So Far', content: generateAwardsSection(weeklyMatchups, standings, currentPeriod, totalPeriods, nameChanges) })
 
