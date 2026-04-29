@@ -1,4 +1,4 @@
-name = "fantasy-season-review"
+name = "unofficialfantasyreview"
 compatibility_date = "2026-04-29"
 main = "src/worker.js"
 
