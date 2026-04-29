@@ -1,19 +1,17 @@
 /**
- * Fantrax API Proxy — Netlify Edge Function
+ * Fantrax API Proxy — Cloudflare Pages Function
  *
- * Routes /fantrax/* requests to www.fantrax.com.
- * We can't use Netlify's [[redirects]] proxy here because it silently drops
- * POST bodies, which breaks the fxpa endpoints. This edge function preserves
- * the full request including body.
+ * Handles all requests to /fantrax/* and forwards them to www.fantrax.com.
+ * The browser can't call Fantrax directly due to CORS, so this function acts
+ * as a same-origin proxy.
  *
  * Security measures:
- *  - ALLOWED_PATHS: only the 4 endpoints the app actually needs are forwarded
+ *  - ALLOWED_PATHS: only the 4 endpoints the app needs are forwarded
  *  - ALLOWED_FXPA_METHODS: POST bodies to /fxpa/req are validated so callers
  *    can't use our proxy to invoke arbitrary Fantrax API methods
- *  - CORS: restricted to the deployed site URL (Netlify sets URL automatically)
+ *  - CORS: restricted to the deployed site URL (set SITE_URL in Cloudflare env vars)
  */
 
-// Only these Fantrax paths will be proxied — everything else gets a 403
 const ALLOWED_PATHS = new Set([
   '/fxea/general/getStandings',
   '/fxpa/req',
@@ -21,10 +19,10 @@ const ALLOWED_PATHS = new Set([
   '/fxea/general/getTeamRosters',
 ])
 
-// For the /fxpa/req endpoint, only these Fantrax API method names are permitted
 const ALLOWED_FXPA_METHODS = new Set(['getStandings', 'getDraftResults'])
 
-export default async (request) => {
+export async function onRequest(context) {
+  const { request, env } = context
   const url = new URL(request.url)
   const pathname = url.pathname.replace(/^\/fantrax/, '')
 
@@ -33,14 +31,12 @@ export default async (request) => {
     return new Response('Not allowed', { status: 403, headers: { 'Content-Type': 'text/plain' } })
   }
 
-  // Build the Fantrax request options
   const options = { method: request.method, headers: { 'Content-Type': 'application/json' } }
 
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     const bodyText = await request.text()
 
-    // For /fxpa/req, validate the Fantrax method name inside the POST body.
-    // This prevents our proxy being used as a relay to call arbitrary Fantrax methods.
+    // For /fxpa/req, validate the Fantrax method name inside the POST body
     if (pathname === '/fxpa/req') {
       try {
         const parsed = JSON.parse(bodyText)
@@ -56,11 +52,10 @@ export default async (request) => {
     options.body = bodyText
   }
 
-  // Determine the CORS origin to allow.
-  // Netlify automatically sets the URL env var to the site's primary domain.
-  // We also allow localhost so local dev works without changes.
+  // CORS: allow the deployed site and localhost for local dev
+  // Set SITE_URL in Cloudflare Pages environment variables dashboard
   const origin = request.headers.get('Origin') || ''
-  const siteUrl = (typeof Netlify !== 'undefined' ? Netlify.env.get('URL') : null) || ''
+  const siteUrl = env.SITE_URL || ''
   const allowOrigin = (siteUrl && origin === siteUrl) || origin.startsWith('http://localhost')
     ? origin
     : siteUrl || '*'
@@ -81,5 +76,3 @@ export default async (request) => {
     })
   }
 }
-
-export const config = { path: '/fantrax/*' }
