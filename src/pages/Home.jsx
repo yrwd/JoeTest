@@ -26,11 +26,6 @@ export default function Home() {
     }
   }
 
-  function copyAll() {
-    const text = sections.map(s => `${s.icon || ''} ${s.title}\n${'─'.repeat(40)}\n\n${s.content}`).join('\n\n\n')
-    navigator.clipboard.writeText(text)
-  }
-
   const busy = status === 'loading'
 
   return (
@@ -75,11 +70,6 @@ export default function Home() {
 
       {sections.length > 0 && (
         <>
-          <div className="report-toolbar">
-            <span className="report-count">{sections.length} sections</span>
-            <button className="copy-btn" onClick={copyAll}>Copy Full Report</button>
-          </div>
-
           <div className="tiles-grid">
             {sections.map(section => (
               <div
