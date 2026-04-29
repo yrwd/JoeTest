@@ -314,24 +314,26 @@ function generateDraftAnalysisSection(topPicks, worstPicks) {
   const lines = []
 
   if (topPicks.length) {
-    lines.push('BEST PICKS')
+    lines.push('TOP PICKS — Still on the squad')
     topPicks.forEach((p, i) => {
-      lines.push(`${i + 1}. ${p.name} (${p.teamName}, R${p.draftRound} P${p.draftPick}) — ${fmt(p.totalPts)} pts${p.avgPts > 0 ? `, avg ${fmt(p.avgPts)}/GW` : ''}`)
+      const ctx = [p.position, p.club].filter(Boolean).join(', ')
+      lines.push(`${i + 1}. ${p.playerName}${ctx ? ` (${ctx})` : ''} — drafted R${p.draftRound} P${p.draftPick} by ${p.teamName}`)
     })
   }
 
   if (worstPicks.length) {
     if (lines.length) lines.push('')
-    lines.push('BUSTS — Early picks that were dropped')
+    lines.push('BUSTS — Dropped despite early investment')
     worstPicks.forEach((p, i) => {
-      lines.push(`${i + 1}. ${p.playerName} (${p.teamName}, R${p.draftRound} P${p.draftPick}) — no longer on the squad`)
+      const ctx = [p.position, p.club].filter(Boolean).join(', ')
+      lines.push(`${i + 1}. ${p.playerName}${ctx ? ` (${ctx})` : ''} — R${p.draftRound} P${p.draftPick} by ${p.teamName}, no longer on the squad`)
     })
   }
 
   return lines.join('\n')
 }
 
-function generateTransferAnalysisSection(rosterChanges, bestIncomings, worstTrade) {
+function generateTransferAnalysisSection(rosterChanges, bestIncomings) {
   const lines = []
   const sorted = [...rosterChanges].sort((a, b) => (b.added.length + b.removed.length) - (a.added.length + a.removed.length))
 
@@ -351,9 +353,10 @@ function generateTransferAnalysisSection(rosterChanges, bestIncomings, worstTrad
 
   if (bestIncomings.length) {
     lines.push('')
-    lines.push('BEST PLAYERS TRANSFERRED IN')
+    lines.push('BEST PLAYERS TRANSFERRED IN — now starting regulars')
     bestIncomings.forEach((p, i) => {
-      lines.push(`${i + 1}. ${p.name} → ${p.teamName} — ${fmt(p.totalPts)} pts${p.avgPts > 0 ? `, avg ${fmt(p.avgPts)}/GW` : ''}`)
+      const ctx = [p.position, p.club].filter(Boolean).join(', ')
+      lines.push(`${i + 1}. ${p.playerName}${ctx ? ` (${ctx})` : ''} → ${p.teamName}`)
     })
   }
 
@@ -374,7 +377,6 @@ function analyzeBiggestUpset(weeklyMatchups, standings) {
       const winnerRank = rankMap[winner] || 0
       const loserRank = rankMap[loser] || 0
       const margin = winFpts - loseFpts
-      // Upset = winner has a worse final standing than loser
       if (winnerRank > loserRank && (!best || margin > best.margin)) {
         best = { winner, loser, winFpts, loseFpts, margin, gw: gw.caption, winnerRank, loserRank }
       }
@@ -383,46 +385,29 @@ function analyzeBiggestUpset(weeklyMatchups, standings) {
   return best
 }
 
-function generateAwardsSection(weeklyMatchups, standings, top5Scorers, worstTrade, currentPeriod, totalPeriods) {
+function generateAwardsSection(weeklyMatchups, standings, currentPeriod, totalPeriods) {
   const isComplete = currentPeriod >= totalPeriods
   const lines = []
-
-  // Biggest win
   const { biggestMargin } = analyzeWeekly(weeklyMatchups)
+
   if (biggestMargin?.winner) {
-    lines.push(`BIGGEST WIN`)
+    lines.push('BIGGEST WIN')
     lines.push(`${biggestMargin.winner} ${fmt(biggestMargin.winFpts)} — ${fmt(biggestMargin.loseFpts)} ${biggestMargin.loser}`)
-    lines.push(`${biggestMargin.gw} · margin of ${fmt(biggestMargin.margin)} pts`)
+    lines.push(`${biggestMargin.gw} · winning margin: ${fmt(biggestMargin.margin)} pts`)
   }
 
-  // Top 5 scorers
-  if (top5Scorers.length) {
-    if (lines.length) lines.push('')
-    lines.push('TOP 5 HIGHEST SCORING PLAYERS')
-    top5Scorers.forEach((p, i) => {
-      lines.push(`${i + 1}. ${p.name} (${p.teamName}) — ${fmt(p.totalPts)} pts${p.avgPts > 0 ? `, avg ${fmt(p.avgPts)}/GW` : ''}`)
-    })
-  }
-
-  // Biggest upset
   const upset = analyzeBiggestUpset(weeklyMatchups, standings)
   if (upset) {
     if (lines.length) lines.push('')
     lines.push('BIGGEST UPSET')
-    lines.push(`${upset.winner} (${ordinal(upset.winnerRank)}) beat ${upset.loser} (${ordinal(upset.loserRank)}) ${fmt(upset.winFpts)}–${fmt(upset.loseFpts)}`)
-    lines.push(`${upset.gw} · ${ordinal(upset.loserRank)}-place team beaten by ${ordinal(upset.winnerRank)}-place team`)
+    lines.push(`${upset.winner} (${ordinal(upset.winnerRank)} place) beat ${upset.loser} (${ordinal(upset.loserRank)} place)`)
+    lines.push(`${fmt(upset.winFpts)} — ${fmt(upset.loseFpts)} · ${upset.gw}`)
   }
 
-  // Worst trade
-  if (worstTrade) {
-    if (lines.length) lines.push('')
-    lines.push('WORST TRANSFER OF THE SEASON')
-    lines.push(`${worstTrade.droppedBy} dropped ${worstTrade.playerName}, who went on to score ${fmt(worstTrade.totalPts)} pts for ${worstTrade.pickedUpBy}.`)
-  }
+  if (!lines.length) return ''
 
   lines.push('')
   lines.push(isComplete ? 'Season complete.' : `${totalPeriods - currentPeriod} gameweek${totalPeriods - currentPeriod !== 1 ? 's' : ''} remaining.`)
-
   return lines.join('\n')
 }
 
@@ -445,9 +430,8 @@ function stripHeader(text) {
 export function generateRoastSections(leagueData) {
   const {
     standings, draftPicks = [], weeklyMatchups = [],
-    rosterChanges = [], teamPlayerHighlights = {},
-    currentPeriod = 34, totalPeriods = 38,
-    draftAnalysis = {}, transferAnalysis = {}, top5Scorers = []
+    rosterChanges = [], currentPeriod = 34, totalPeriods = 38,
+    draftAnalysis = {}, transferAnalysis = {}
   } = leagueData
 
   if (!standings?.length) throw new Error('No standings data available.')
@@ -475,7 +459,7 @@ export function generateRoastSections(leagueData) {
     content: stripHeader(spoonText)
   })
 
-  // 3. Draft Day — top 3 picks + worst 3 picks
+  // 3. Draft Day
   const { topPicks = [], worstPicks = [] } = draftAnalysis
   if (topPicks.length || worstPicks.length) out.push({
     id: 'draft', icon: '📋', accent: 'teal',
@@ -483,16 +467,16 @@ export function generateRoastSections(leagueData) {
     content: generateDraftAnalysisSection(topPicks, worstPicks)
   })
 
-  // 4. Transfer Activity — most/least active + best incoming
-  const { bestIncomings = [], worstTrade = null } = transferAnalysis
+  // 4. Transfer Activity
+  const { bestIncomings = [] } = transferAnalysis
   if (rosterChanges.length) out.push({
     id: 'transfers', icon: '🔄', accent: 'teal',
     title: 'Transfer Activity',
-    content: generateTransferAnalysisSection(rosterChanges, bestIncomings, worstTrade)
+    content: generateTransferAnalysisSection(rosterChanges, bestIncomings)
   })
 
   // 5. Awards
-  const awardsContent = generateAwardsSection(weeklyMatchups, standings, top5Scorers, worstTrade, currentPeriod, totalPeriods)
+  const awardsContent = generateAwardsSection(weeklyMatchups, standings, currentPeriod, totalPeriods)
   if (awardsContent) out.push({
     id: 'awards', icon: '🏅', accent: 'gold', fullWidth: true,
     title: isComplete ? 'End of Season Awards' : 'Awards So Far',
