@@ -132,8 +132,6 @@ function generateTransferAnalysisSection(rosterChanges, bestIncomings) {
   const leastTotal = least.added.length + least.removed.length
 
   lines.push(`MOST ACTIVE: ${most.teamName} — ${mostTotal} move${mostTotal !== 1 ? 's' : ''}`)
-  if (most.added.length) lines.push(`  Signed: ${most.added.slice(0, 5).join(', ')}`)
-  if (most.removed.length) lines.push(`  Moved on: ${most.removed.slice(0, 5).join(', ')}`)
   lines.push('')
   lines.push(`LEAST ACTIVE: ${least.teamName} — ${leastTotal === 0 ? 'zero changes all season' : `${leastTotal} move${leastTotal !== 1 ? 's' : ''}`}`)
 
@@ -250,7 +248,7 @@ function generateBogeySection(weeklyMatchups) {
     .join('\n')
 }
 
-function generateSeasonStoriesSection(weeklyMatchups, standings) {
+function generateSeasonStoriesSection(weeklyMatchups, standings, worstPicks) {
   if (!weeklyMatchups.length) return 'Match data needed for season stories.'
   const lines = []
 
@@ -295,6 +293,16 @@ function generateSeasonStoriesSection(weeklyMatchups, standings) {
   if (unluckiest && unluckiest[1] >= 2) {
     lines.push(`MOST UNLUCKY: ${unluckiest[0]}`)
     lines.push(`Scored above the weekly average ${unluckiest[1]} times but still lost`)
+    lines.push('')
+  }
+
+  // Biggest high-ADP name that didn't make it — earliest round pick that was dropped
+  if (worstPicks && worstPicks.length > 0) {
+    const p = worstPicks[0]
+    const ctx = [p.position, p.club].filter(Boolean).join(', ')
+    lines.push('BIGGEST HIGH-PROFILE DEPARTURE')
+    lines.push(`${p.playerName}${ctx ? ` (${ctx})` : ''} — picked in R${p.draftRound} by ${p.teamName}, no longer in the league`)
+    lines.push('One of the most anticipated picks of the draft. Didn\'t last the season.')
   }
 
   return lines.join('\n') || 'Not enough data for season stories yet.'
@@ -434,7 +442,7 @@ export function generateRoastSections(leagueData) {
 
   out.push({ id: 'undrafted', icon: '🔍', accent: 'green', title: 'Best Undrafted Pickups', content: generateUndraftedSection(undraftedPickups) })
 
-  out.push({ id: 'stories', icon: '📈', accent: 'green', fullWidth: true, title: 'Season Stories', content: generateSeasonStoriesSection(weeklyMatchups, standings) })
+  out.push({ id: 'stories', icon: '📈', accent: 'green', fullWidth: true, title: 'Season Stories', content: generateSeasonStoriesSection(weeklyMatchups, standings, worstPicks) })
 
   out.push({ id: 'awards', icon: '🏅', accent: 'gold', fullWidth: true, title: isComplete ? 'End of Season Awards' : 'Awards So Far', content: generateAwardsSection(weeklyMatchups, standings, currentPeriod, totalPeriods, nameChanges) })
 
