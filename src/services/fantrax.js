@@ -163,15 +163,14 @@ export async function fetchLeagueData(leagueInput, onProgress) {
     for (const name of change.added) {
       const id = playerIdByName[name]
       if (id && activeStatusById[id] === 'ACTIVE') {
-        bestIncomings.push({
-          playerName: name,
-          teamName: change.teamName,
-          position: playerDb[id]?.position || '',
-          club: playerDb[id]?.team || ''
-        })
+        bestIncomings.push({ playerName: name, teamName: change.teamName, position: playerDb[id]?.position || '', club: playerDb[id]?.team || '' })
       }
     }
   }
+
+  // Undrafted pickups: active starters who were never in the original draft
+  const draftedNames = new Set(allPicks.map(p => playerDb[p.scorerId]?.name).filter(Boolean))
+  const undraftedPickups = bestIncomings.filter(p => !draftedNames.has(p.playerName)).slice(0, 5)
 
   // Detect team name changes (period 1 name vs current name)
   const nameChanges = []
@@ -196,6 +195,6 @@ export async function fetchLeagueData(leagueInput, onProgress) {
     rosterChanges,
     nameChanges,
     draftAnalysis: { topPicks, worstPicks },
-    transferAnalysis: { bestIncomings }
+    transferAnalysis: { bestIncomings, undraftedPickups }
   }
 }

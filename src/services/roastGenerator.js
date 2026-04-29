@@ -148,6 +148,169 @@ function generateTransferAnalysisSection(rosterChanges, bestIncomings) {
   return lines.join('\n')
 }
 
+function analyzeBogeyTeams(weeklyMatchups) {
+  const wins = {}
+  const teams = new Set()
+  for (const gw of weeklyMatchups) {
+    for (const m of gw.matchups) {
+      if (!m.awayFpts && !m.homeFpts) continue
+      teams.add(m.awayTeam); teams.add(m.homeTeam)
+      const winner = m.awayFpts > m.homeFpts ? m.awayTeam : m.homeTeam
+      const loser = m.awayFpts > m.homeFpts ? m.homeTeam : m.awayTeam
+      if (!wins[winner]) wins[winner] = {}
+      wins[winner][loser] = (wins[winner][loser] || 0) + 1
+    }
+  }
+  return [...teams].map(team => {
+    let bogey = null, bogeyCount = 0, victim = null, victimCount = 0
+    for (const opp of teams) {
+      if (opp === team) continue
+      const lossesToOpp = (wins[opp] || {})[team] || 0
+      const winsOverOpp = (wins[team] || {})[opp] || 0
+      if (lossesToOpp > bogeyCount) { bogey = opp; bogeyCount = lossesToOpp }
+      if (winsOverOpp > victimCount) { victim = opp; victimCount = winsOverOpp }
+    }
+    return { team, bogey, bogeyCount, victim, victimCount }
+  })
+}
+
+function analyzeStreaksAll(weeklyMatchups) {
+  const results = {}
+  for (const gw of weeklyMatchups) {
+    for (const m of gw.matchups) {
+      if (!m.awayFpts && !m.homeFpts) continue
+      const awayWon = m.awayFpts > m.homeFpts
+      ;[m.awayTeam, m.homeTeam].forEach((t, i) => {
+        if (!results[t]) results[t] = []
+        results[t].push(i === 0 ? awayWon : !awayWon)
+      })
+    }
+  }
+  const streaks = {}
+  for (const [team, res] of Object.entries(results)) {
+    let maxW = 0, maxL = 0, curW = 0, curL = 0
+    for (const won of res) {
+      if (won) { curW++; maxW = Math.max(maxW, curW); curL = 0 }
+      else { curL++; maxL = Math.max(maxL, curL); curW = 0 }
+    }
+    streaks[team] = { winStreak: maxW, loseStreak: maxL }
+  }
+  return streaks
+}
+
+function analyzeSeasonArc(weeklyMatchups, standings) {
+  if (weeklyMatchups.length < 6) return null
+  const checkpoint = Math.max(3, Math.floor(weeklyMatchups.length / 3))
+  const earlyW = {}, earlyG = {}
+  for (let i = 0; i < checkpoint; i++) {
+    for (const m of weeklyMatchups[i].matchups) {
+      if (!m.awayFpts && !m.homeFpts) continue
+      const winner = m.awayFpts > m.homeFpts ? m.awayTeam : m.homeTeam
+      const loser = m.awayFpts > m.homeFpts ? m.homeTeam : m.awayTeam
+      earlyW[winner] = (earlyW[winner] || 0) + 1
+      earlyG[winner] = (earlyG[winner] || 0) + 1
+      earlyG[loser] = (earlyG[loser] || 0) + 1
+    }
+  }
+  const finalRank = Object.fromEntries(standings.map(t => [t.teamName, t.rank]))
+  const arcs = standings
+    .map(t => ({ team: t.teamName, earlyRate: (earlyW[t.teamName] || 0) / (earlyG[t.teamName] || 1), finalRank: finalRank[t.teamName] }))
+    .sort((a, b) => b.earlyRate - a.earlyRate)
+    .map((a, i) => ({ ...a, earlyRank: i + 1, change: (i + 1) - finalRank[a.team] }))
+  arcs.sort((a, b) => b.change - a.change)
+  return { comeback: arcs[0], fall: arcs[arcs.length - 1] }
+}
+
+function analyzeUnlucky(weeklyMatchups) {
+  const unlucky = {}
+  for (const gw of weeklyMatchups) {
+    const scores = gw.matchups.flatMap(m => [m.awayFpts, m.homeFpts]).filter(s => s > 0)
+    if (!scores.length) continue
+    const avg = scores.reduce((a, b) => a + b, 0) / scores.length
+    for (const m of gw.matchups) {
+      if (m.awayFpts > avg && m.awayFpts < m.homeFpts) unlucky[m.awayTeam] = (unlucky[m.awayTeam] || 0) + 1
+      if (m.homeFpts > avg && m.homeFpts < m.awayFpts) unlucky[m.homeTeam] = (unlucky[m.homeTeam] || 0) + 1
+    }
+  }
+  return unlucky
+}
+
+function generateBogeySection(weeklyMatchups, standings) {
+  if (!weeklyMatchups.length) return 'Match data needed for head-to-head records.'
+  const data = analyzeBogeyTeams(weeklyMatchups)
+  const rankMap = Object.fromEntries(standings.map(t => [t.teamName, t.rank]))
+  const lines = data
+    .filter(d => d.bogeyCount > 1 || d.victimCount > 1)
+    .sort((a, b) => (rankMap[a.team] || 99) - (rankMap[b.team] || 99))
+    .map(d => {
+      const parts = []
+      if (d.bogey && d.bogeyCount > 1) parts.push(`Nemesis: ${d.bogey} (${d.bogeyCount}W)`)
+      if (d.victim && d.victimCount > 1) parts.push(`Favourite: ${d.victim} (${d.victimCount}W)`)
+      return parts.length ? `${d.team}\n  ${parts.join(' · ')}` : null
+    }).filter(Boolean)
+  return lines.join('\n\n') || 'Not enough fixtures for head-to-head patterns yet.'
+}
+
+function generateSeasonStoriesSection(weeklyMatchups, standings) {
+  if (!weeklyMatchups.length) return 'Match data needed for season stories.'
+  const lines = []
+
+  const streaks = analyzeStreaksAll(weeklyMatchups)
+  const teams = Object.keys(streaks)
+  const topWin = teams.sort((a, b) => streaks[b].winStreak - streaks[a].winStreak)[0]
+  const topLoss = teams.sort((a, b) => streaks[b].loseStreak - streaks[a].loseStreak)[0]
+  if (topWin && streaks[topWin].winStreak >= 3) {
+    lines.push(`LONGEST WIN STREAK: ${topWin} — ${streaks[topWin].winStreak} in a row`)
+    lines.push('')
+  }
+  if (topLoss && streaks[topLoss].loseStreak >= 3) {
+    lines.push(`LONGEST LOSING STREAK: ${topLoss} — ${streaks[topLoss].loseStreak} consecutive losses`)
+    lines.push('')
+  }
+
+  const arc = analyzeSeasonArc(weeklyMatchups, standings)
+  if (arc?.comeback?.change > 2) {
+    lines.push(`BEST COMEBACK: ${arc.comeback.team}`)
+    lines.push(`Tracking ${ordinal(arc.comeback.earlyRank)} early in the season, now ${ordinal(arc.comeback.finalRank)}`)
+    lines.push('')
+  }
+  if (arc?.fall?.change < -2) {
+    lines.push(`WORST FALL FROM GRACE: ${arc.fall.team}`)
+    lines.push(`Looked like ${ordinal(arc.fall.earlyRank)} place material early on, ended up ${ordinal(arc.fall.finalRank)}`)
+    lines.push('')
+  }
+
+  const { teamStats } = analyzeWeekly(weeklyMatchups)
+  if (teamStats) {
+    const consistent = Object.keys(teamStats).sort((a, b) => (teamStats[a].best - teamStats[a].worst) - (teamStats[b].best - teamStats[b].worst))[0]
+    if (consistent) {
+      const range = teamStats[consistent].best - teamStats[consistent].worst
+      lines.push(`MOST CONSISTENT: ${consistent}`)
+      lines.push(`Scored between ${fmt(teamStats[consistent].worst)} and ${fmt(teamStats[consistent].best)} pts — only a ${fmt(range)}-point range`)
+      lines.push('')
+    }
+  }
+
+  const unlucky = analyzeUnlucky(weeklyMatchups)
+  const unluckiest = Object.entries(unlucky).sort((a, b) => b[1] - a[1])[0]
+  if (unluckiest && unluckiest[1] >= 2) {
+    lines.push(`MOST UNLUCKY: ${unluckiest[0]}`)
+    lines.push(`Scored above the weekly average ${unluckiest[1]} times but still lost`)
+  }
+
+  return lines.join('\n') || 'Not enough data for season stories yet.'
+}
+
+function generateUndraftedSection(undraftedPickups) {
+  if (!undraftedPickups.length) return 'No undrafted pickups currently starting for their teams.'
+  const lines = ['TOP UNDRAFTED PICKUPS — signed off the waiver wire, now starting']
+  undraftedPickups.forEach((p, i) => {
+    const ctx = [p.position, p.club].filter(Boolean).join(', ')
+    lines.push(`${i + 1}. ${p.playerName}${ctx ? ` (${ctx})` : ''} → ${p.teamName}`)
+  })
+  return lines.join('\n')
+}
+
 function analyzeBiggestUpset(weeklyMatchups, standings) {
   const rankMap = Object.fromEntries(standings.map(t => [t.teamName, t.rank]))
   let best = null
@@ -265,8 +428,14 @@ export function generateRoastSections(leagueData) {
   const { topPicks = [], worstPicks = [] } = draftAnalysis
   out.push({ id: 'draft', icon: '📋', accent: 'teal', title: 'Draft Day', content: generateDraftAnalysisSection(topPicks, worstPicks) })
 
-  const { bestIncomings = [] } = transferAnalysis
+  const { bestIncomings = [], undraftedPickups = [] } = transferAnalysis
   out.push({ id: 'transfers', icon: '🔄', accent: 'teal', title: 'Transfer Activity', content: generateTransferAnalysisSection(rosterChanges, bestIncomings) })
+
+  out.push({ id: 'bogey', icon: '👻', accent: 'blue', title: 'Bogey Teams', content: generateBogeySection(weeklyMatchups, standings) })
+
+  out.push({ id: 'stories', icon: '📈', accent: 'green', fullWidth: true, title: 'Season Stories', content: generateSeasonStoriesSection(weeklyMatchups, standings) })
+
+  out.push({ id: 'undrafted', icon: '🔍', accent: 'green', title: 'Best Undrafted Pickups', content: generateUndraftedSection(undraftedPickups) })
 
   out.push({ id: 'awards', icon: '🏅', accent: 'gold', fullWidth: true, title: isComplete ? 'End of Season Awards' : 'Awards So Far', content: generateAwardsSection(weeklyMatchups, standings, currentPeriod, totalPeriods, nameChanges) })
 
