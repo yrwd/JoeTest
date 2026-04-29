@@ -58,14 +58,6 @@ function analyzeWeekly(weeklyMatchups) {
   return { lowestScore, highestScore, biggestMargin, closestGame, teamStats }
 }
 
-function seasonLabel(current, total) {
-  if (current >= total) return 'end of season'
-  const pct = current / total
-  if (pct < 0.33) return 'early season'
-  if (pct < 0.66) return 'mid-season'
-  return 'late season'
-}
-
 // ─── Section generators ──────────────────────────────────────────────────────
 
 function generateIntro(leagueName, standings, weeklyMatchups, currentPeriod, totalPeriods) {
@@ -130,9 +122,9 @@ function generateWoodenSpoon(last, standings, teamStats, currentPeriod, totalPer
 ${'─'.repeat(40)}
 ${last.wins}W - ${last.draws}D - ${last.losses}L | ${fmt(last.totalPointsFor)} FPts | ${winRate}% win rate
 
-${last.wins} win${last.wins !== 1 ? 's' : ''} from ${gamesPlayed} games. ${parseFloat(winRate) < 15 ? 'That\'s below the average relegation-zone win rate in the actual Premier League.' : ''}
+${last.wins} win${last.wins !== 1 ? 's' : ''} from ${gamesPlayed} games. ${parseFloat(winRate) < 15 ? "That's below the average relegation-zone win rate in the actual Premier League." : ''}
 
-${ts?.worstWeek ? `Their lowest point: ${fmt(ts.worstWeek.fpts)} points in ${ts.worstWeek.gw} against ${ts.worstWeek.opponent}.` : ''}${isComplete ? '' : ` ${remaining} games left to turn it around. It\'s not impossible. It just looks it.`}`,
+${ts?.worstWeek ? `Their lowest point: ${fmt(ts.worstWeek.fpts)} points in ${ts.worstWeek.gw} against ${ts.worstWeek.opponent}.` : ''}${isComplete ? '' : ` ${remaining} games left to turn it around. It's not impossible. It just looks it.`}`,
 
     `🥄 ${label}: ${last.teamName}
 ${'─'.repeat(40)}
@@ -140,7 +132,7 @@ ${last.wins}W - ${last.draws}D - ${last.losses}L
 
 Let's be honest: ${last.losses} losses is a tough return. ${fmt(last.totalPointsFor)} fantasy points, ${fmt(standings[0].totalPointsFor - last.totalPointsFor)} behind the top.${isComplete ? '' : ` ${remaining} gameweeks to salvage some dignity.`}
 
-${last.wins === 1 ? 'One win. One. There\'s a certain purity to it.' : last.wins <= 4 ? `${last.wins} wins. At least they\'re not winless.` : `${last.wins} wins, which suggests there were signs of life — just not enough.`}`
+${last.wins === 1 ? "One win. One. There's a certain purity to it." : last.wins <= 4 ? `${last.wins} wins. At least they're not winless.` : `${last.wins} wins, which suggests there were signs of life — just not enough.`}`
   ])
 }
 
@@ -214,7 +206,7 @@ function generatePlayerHighlights(standings, teamPlayerHighlights) {
   return lines.length > 1 ? lines.join('\n\n') : ''
 }
 
-function generateDraftSection(pick1, pick1Team, round1, standings) {
+function generateDraftSection(pick1, pick1Team, round1) {
   if (!pick1) return ''
   const lines = [`📋 DRAFT DAY\n${'─'.repeat(40)}`]
 
@@ -429,7 +421,7 @@ function stripHeader(text) {
 
 export function generateRoastSections(leagueData) {
   const {
-    standings, draftPicks = [], weeklyMatchups = [],
+    standings, weeklyMatchups = [],
     rosterChanges = [], currentPeriod = 34, totalPeriods = 38,
     draftAnalysis = {}, transferAnalysis = {}
   } = leagueData
