@@ -3,24 +3,35 @@ import LZString from 'lz-string'
 import { fetchLeagueData } from '../services/fantrax'
 import { generateRoastSections } from '../services/roastGenerator'
 
+// Maximum allowed size (in characters) of a decompressed share link payload.
+// Prevents decompression bomb attacks where a tiny URL expands to gigabytes of data.
+const MAX_SHARE_PAYLOAD = 200_000
+
 export default function Home() {
   const [leagueUrl, setLeagueUrl] = useState('')
-  const [status, setStatus] = useState('idle')
-  const [progress, setProgress] = useState('')
-  const [sections, setSections] = useState([])
-  const [error, setError] = useState('')
-  const [copied, setCopied] = useState(false)
+  const [status,    setStatus]    = useState('idle')  // idle | loading | done | error
+  const [progress,  setProgress]  = useState('')
+  const [sections,  setSections]  = useState([])
+  const [error,     setError]     = useState('')
+  const [copied,    setCopied]    = useState(false)
 
+  // On first load, check if the URL hash contains a shared report (#r=...).
+  // If so, decode and display it without needing to re-fetch from Fantrax.
   useEffect(() => {
     const hash = new URLSearchParams(window.location.hash.slice(1)).get('r')
     if (!hash) return
     try {
-      const decoded = JSON.parse(LZString.decompressFromEncodedURIComponent(hash))
+      const raw = LZString.decompressFromEncodedURIComponent(hash)
+      // Guard against decompression bombs — reject anything suspiciously large
+      if (!raw || raw.length > MAX_SHARE_PAYLOAD) return
+      const decoded = JSON.parse(raw)
       if (Array.isArray(decoded) && decoded.length) {
         setSections(decoded)
         setStatus('done')
       }
-    } catch {}
+    } catch {
+      // Silently ignore malformed share links — the user just sees the input form
+    }
   }, [])
 
   async function handleRoast() {
@@ -35,6 +46,8 @@ export default function Home() {
       const result = generateRoastSections(leagueData)
       setSections(result)
       setStatus('done')
+      // Encode the result into the URL hash so users can share a direct link.
+      // The hash is never sent to servers, so the data stays client-side.
       const compressed = LZString.compressToEncodedURIComponent(JSON.stringify(result))
       window.history.replaceState(null, '', `#r=${compressed}`)
     } catch (err) {
