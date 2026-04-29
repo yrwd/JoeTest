@@ -1,11 +1,14 @@
 /**
- * Cloudflare Worker entry point
+ * Fantrax API Proxy — Cloudflare Pages Function
  *
- * Routes /fantrax/* requests through the Fantrax API proxy.
- * Everything else is served from the built React app (dist/).
+ * Handles all requests to /fantrax/* and forwards them to www.fantrax.com.
+ * The browser can't call Fantrax directly due to CORS, so this function acts
+ * as a same-origin proxy.
  *
- * Set SITE_URL in Cloudflare Workers & Pages → Settings → Variables & Secrets
- * to your deployed domain so CORS is restricted to your site only.
+ * Security:
+ *  - ALLOWED_PATHS: only the 4 endpoints the app needs are forwarded
+ *  - ALLOWED_FXPA_METHODS: POST bodies validated to block arbitrary Fantrax API calls
+ *  - CORS: restricted to the deployed site URL (set SITE_URL in Cloudflare env vars)
  */
 
 const ALLOWED_PATHS = new Set([
@@ -17,20 +20,8 @@ const ALLOWED_PATHS = new Set([
 
 const ALLOWED_FXPA_METHODS = new Set(['getStandings', 'getDraftResults'])
 
-export default {
-  async fetch(request, env) {
-    const url = new URL(request.url)
-
-    if (url.pathname.startsWith('/fantrax/')) {
-      return handleFantraxProxy(request, env)
-    }
-
-    // Fall through to static assets (the React app)
-    return env.ASSETS.fetch(request)
-  },
-}
-
-async function handleFantraxProxy(request, env) {
+export async function onRequest(context) {
+  const { request, env } = context
   const url = new URL(request.url)
   const pathname = url.pathname.replace(/^\/fantrax/, '')
 
