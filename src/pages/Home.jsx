@@ -130,6 +130,12 @@ export default function Home() {
           </div>
         </div>
       )}
+      <footer className="footer">
+        <p>
+          Free to use, no login required.{' '}
+          If it's useful, <a href="https://buymeacoffee.com/jvothe" target="_blank" rel="noopener noreferrer">buy me a coffee</a> — helps cover the server costs that keep it running. ☕
+        </p>
+      </footer>
     </main>
   )
 }
