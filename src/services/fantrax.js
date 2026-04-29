@@ -20,7 +20,7 @@ async function fxpaPost(leagueId, method, extra = {}) {
 // so we filter to only rows where both scores are present.
 function extractMatchups(tableList) {
   return (tableList || [])
-    .filter(t => t.tableType === 'H2hPointsBased2' && t.caption)
+    .filter(t => (t.tableType === 'H2hPointsBased2' || t.tableType === 'H2hPointsBased3') && t.caption)
     .map(t => ({
       caption: t.caption,
       matchups: (t.rows || []).map(row => ({
