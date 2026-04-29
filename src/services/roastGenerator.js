@@ -240,12 +240,12 @@ function generateBogeySection(weeklyMatchups, standings) {
   const data = analyzeBogeyTeams(weeklyMatchups)
   const rankMap = Object.fromEntries(standings.map(t => [t.teamName, t.rank]))
   const lines = data
-    .filter(d => d.bogeyCount > 1 || d.victimCount > 1)
+    .filter(d => d.bogeyCount >= 1 || d.victimCount >= 1)
     .sort((a, b) => (rankMap[a.team] || 99) - (rankMap[b.team] || 99))
     .map(d => {
       const parts = []
-      if (d.bogey && d.bogeyCount > 1) parts.push(`Nemesis: ${d.bogey} (${d.bogeyCount}W)`)
-      if (d.victim && d.victimCount > 1) parts.push(`Favourite: ${d.victim} (${d.victimCount}W)`)
+      if (d.bogey && d.bogeyCount >= 1) parts.push(`Nemesis: ${d.bogey} (${d.bogeyCount}W)`)
+      if (d.victim && d.victimCount >= 1) parts.push(`Favourite victim: ${d.victim} (${d.victimCount}W)`)
       return parts.length ? `${d.team}\n  ${parts.join(' · ')}` : null
     }).filter(Boolean)
   return lines.join('\n\n') || 'Not enough fixtures for head-to-head patterns yet.'
