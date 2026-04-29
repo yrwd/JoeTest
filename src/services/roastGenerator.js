@@ -322,11 +322,21 @@ function generateDraftAnalysisSection(topPicks, worstPicks) {
     })
   }
 
+  if (!topPicks.length && !worstPicks.length) {
+    lines.push('Draft data is loading or unavailable for this league.')
+  }
+
   return lines.join('\n')
 }
 
 function generateTransferAnalysisSection(rosterChanges, bestIncomings) {
   const lines = []
+
+  if (!rosterChanges.length) {
+    lines.push('No transfer data available — roster comparison may still be loading.')
+    return lines.join('\n')
+  }
+
   const sorted = [...rosterChanges].sort((a, b) => (b.added.length + b.removed.length) - (a.added.length + a.removed.length))
 
   if (sorted.length) {
@@ -380,23 +390,38 @@ function analyzeBiggestUpset(weeklyMatchups, standings) {
 function generateAwardsSection(weeklyMatchups, standings, currentPeriod, totalPeriods) {
   const isComplete = currentPeriod >= totalPeriods
   const lines = []
-  const { biggestMargin } = analyzeWeekly(weeklyMatchups)
+  const sorted = [...standings].sort((a, b) => a.rank - b.rank)
+  const winner = sorted[0]
+  const last = sorted[sorted.length - 1]
 
+  // Biggest win from weekly data (if available)
+  const { biggestMargin } = analyzeWeekly(weeklyMatchups)
   if (biggestMargin?.winner) {
     lines.push('BIGGEST WIN')
     lines.push(`${biggestMargin.winner} ${fmt(biggestMargin.winFpts)} — ${fmt(biggestMargin.loseFpts)} ${biggestMargin.loser}`)
     lines.push(`${biggestMargin.gw} · winning margin: ${fmt(biggestMargin.margin)} pts`)
+    lines.push('')
   }
 
+  // Biggest upset from weekly data (if available)
   const upset = analyzeBiggestUpset(weeklyMatchups, standings)
   if (upset) {
-    if (lines.length) lines.push('')
     lines.push('BIGGEST UPSET')
     lines.push(`${upset.winner} (${ordinal(upset.winnerRank)} place) beat ${upset.loser} (${ordinal(upset.loserRank)} place)`)
     lines.push(`${fmt(upset.winFpts)} — ${fmt(upset.loseFpts)} · ${upset.gw}`)
+    lines.push('')
   }
 
-  if (!lines.length) return ''
+  // Always available: standings-based stats
+  lines.push('MOST POINTS SCORED')
+  const topScorer = [...standings].sort((a, b) => b.totalPointsFor - a.totalPointsFor)[0]
+  lines.push(`${topScorer.teamName} — ${fmt(topScorer.totalPointsFor)} pts (avg ${fmt(topScorer.totalPointsFor / currentPeriod)}/GW)`)
+
+  lines.push('')
+  lines.push('POINTS GAP — Top to Bottom')
+  lines.push(`${winner.teamName}: ${fmt(winner.totalPointsFor)} pts`)
+  lines.push(`${last.teamName}: ${fmt(last.totalPointsFor)} pts`)
+  lines.push(`Difference: ${fmt(winner.totalPointsFor - last.totalPointsFor)} pts over ${currentPeriod} gameweeks`)
 
   lines.push('')
   lines.push(isComplete ? 'Season complete.' : `${totalPeriods - currentPeriod} gameweek${totalPeriods - currentPeriod !== 1 ? 's' : ''} remaining.`)
@@ -451,28 +476,27 @@ export function generateRoastSections(leagueData) {
     content: stripHeader(spoonText)
   })
 
-  // 3. Draft Day
+  // 3. Draft Day — always show; falls back gracefully if POST data unavailable
   const { topPicks = [], worstPicks = [] } = draftAnalysis
-  if (topPicks.length || worstPicks.length) out.push({
+  out.push({
     id: 'draft', icon: '📋', accent: 'teal',
     title: 'Draft Day',
     content: generateDraftAnalysisSection(topPicks, worstPicks)
   })
 
-  // 4. Transfer Activity
+  // 4. Transfer Activity — always show; rosterChanges from reliable GET endpoints
   const { bestIncomings = [] } = transferAnalysis
-  if (rosterChanges.length) out.push({
+  out.push({
     id: 'transfers', icon: '🔄', accent: 'teal',
     title: 'Transfer Activity',
     content: generateTransferAnalysisSection(rosterChanges, bestIncomings)
   })
 
-  // 5. Awards
-  const awardsContent = generateAwardsSection(weeklyMatchups, standings, currentPeriod, totalPeriods)
-  if (awardsContent) out.push({
+  // 5. Awards — always show; uses standings as base so content always exists
+  out.push({
     id: 'awards', icon: '🏅', accent: 'gold', fullWidth: true,
     title: isComplete ? 'End of Season Awards' : 'Awards So Far',
-    content: awardsContent
+    content: generateAwardsSection(weeklyMatchups, standings, currentPeriod, totalPeriods)
   })
 
   return out
