@@ -1,4 +1,4 @@
-name = "unofficialfantasyreview"
+name = "fantasyreview"
 compatibility_date = "2026-04-29"
 main = "src/worker.js"
 
