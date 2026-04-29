@@ -149,7 +149,7 @@ function generateTransferAnalysisSection(rosterChanges, bestIncomings) {
 }
 
 function analyzeBogeyTeams(weeklyMatchups) {
-  const wins = {}
+  const h2h = {}
   const teams = new Set()
   for (const gw of weeklyMatchups) {
     for (const m of gw.matchups) {
@@ -157,21 +157,27 @@ function analyzeBogeyTeams(weeklyMatchups) {
       teams.add(m.awayTeam); teams.add(m.homeTeam)
       const winner = m.awayFpts > m.homeFpts ? m.awayTeam : m.homeTeam
       const loser = m.awayFpts > m.homeFpts ? m.homeTeam : m.awayTeam
-      if (!wins[winner]) wins[winner] = {}
-      wins[winner][loser] = (wins[winner][loser] || 0) + 1
+      if (!h2h[winner]) h2h[winner] = {}
+      h2h[winner][loser] = (h2h[winner][loser] || 0) + 1
     }
   }
-  return [...teams].map(team => {
-    let bogey = null, bogeyCount = 0, victim = null, victimCount = 0
-    for (const opp of teams) {
-      if (opp === team) continue
-      const lossesToOpp = (wins[opp] || {})[team] || 0
-      const winsOverOpp = (wins[team] || {})[opp] || 0
-      if (lossesToOpp > bogeyCount) { bogey = opp; bogeyCount = lossesToOpp }
-      if (winsOverOpp > victimCount) { victim = opp; victimCount = winsOverOpp }
+  const teamList = [...teams]
+  const pairs = []
+  for (let i = 0; i < teamList.length; i++) {
+    for (let j = i + 1; j < teamList.length; j++) {
+      const a = teamList[i], b = teamList[j]
+      const aWins = (h2h[a] || {})[b] || 0
+      const bWins = (h2h[b] || {})[a] || 0
+      const total = aWins + bWins
+      if (total < 2) continue
+      const margin = Math.abs(aWins - bWins)
+      if (margin < 2) continue // skip balanced or near-equal records
+      const dominant = aWins >= bWins ? a : b
+      const submissive = aWins >= bWins ? b : a
+      pairs.push({ dominant, submissive, domWins: Math.max(aWins, bWins), subWins: Math.min(aWins, bWins), total, margin })
     }
-    return { team, bogey, bogeyCount, victim, victimCount }
-  })
+  }
+  return pairs.sort((a, b) => b.margin - a.margin || b.total - a.total)
 }
 
 function analyzeStreaksAll(weeklyMatchups) {
@@ -235,20 +241,13 @@ function analyzeUnlucky(weeklyMatchups) {
   return unlucky
 }
 
-function generateBogeySection(weeklyMatchups, standings) {
+function generateBogeySection(weeklyMatchups) {
   if (!weeklyMatchups.length) return 'Match data needed for head-to-head records.'
-  const data = analyzeBogeyTeams(weeklyMatchups)
-  const rankMap = Object.fromEntries(standings.map(t => [t.teamName, t.rank]))
-  const lines = data
-    .filter(d => d.bogeyCount >= 1 || d.victimCount >= 1)
-    .sort((a, b) => (rankMap[a.team] || 99) - (rankMap[b.team] || 99))
-    .map(d => {
-      const parts = []
-      if (d.bogey && d.bogeyCount >= 1) parts.push(`Nemesis: ${d.bogey} (${d.bogeyCount}W)`)
-      if (d.victim && d.victimCount >= 1) parts.push(`Favourite victim: ${d.victim} (${d.victimCount}W)`)
-      return parts.length ? `${d.team}\n  ${parts.join(' · ')}` : null
-    }).filter(Boolean)
-  return lines.join('\n\n') || 'Not enough fixtures for head-to-head patterns yet.'
+  const pairs = analyzeBogeyTeams(weeklyMatchups)
+  if (!pairs.length) return 'No dominant head-to-head patterns yet — records are fairly even across all meetings.'
+  return pairs
+    .map(p => `${p.dominant} owns ${p.submissive}: ${p.domWins}-${p.subWins} from ${p.total} meetings`)
+    .join('\n')
 }
 
 function generateSeasonStoriesSection(weeklyMatchups, standings) {
@@ -431,7 +430,7 @@ export function generateRoastSections(leagueData) {
   const { bestIncomings = [], undraftedPickups = [] } = transferAnalysis
   out.push({ id: 'transfers', icon: '🔄', accent: 'teal', title: 'Transfer Activity', content: generateTransferAnalysisSection(rosterChanges, bestIncomings) })
 
-  out.push({ id: 'bogey', icon: '👻', accent: 'blue', title: 'Bogey Teams', content: generateBogeySection(weeklyMatchups, standings) })
+  out.push({ id: 'bogey', icon: '👻', accent: 'blue', title: 'Bogey Teams', content: generateBogeySection(weeklyMatchups) })
 
   out.push({ id: 'undrafted', icon: '🔍', accent: 'green', title: 'Best Undrafted Pickups', content: generateUndraftedSection(undraftedPickups) })
 
