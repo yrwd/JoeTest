@@ -2,7 +2,10 @@ const FANTRAX = '/fantrax'
 
 export function extractLeagueId(input) {
   const match = input.match(/\/league\/([a-z0-9]+)/i)
-  return match ? match[1] : input.trim()
+  if (match) return match[1]
+  const bare = input.trim().replace(/[^a-z0-9]/gi, '')
+  if (!bare) throw new Error('Invalid league URL or ID — could not find a league ID.')
+  return bare
 }
 
 async function fxpaPost(leagueId, method, extra = {}) {
@@ -47,23 +50,17 @@ export async function fetchLeagueData(leagueInput, onProgress) {
     throw new Error('League not found or set to private. Make your Fantrax league public in league settings.')
   }
 
-  onProgress?.('Fetching match results...')
-  // Fetch schedule separately to avoid proxy race conditions
-  const scheduleData = await fxpaPost(leagueId, 'getStandings', { view: 'SCHEDULE' }).catch(() => null)
-
-  onProgress?.('Fetching draft results...')
-  const draftData = await fxpaPost(leagueId, 'getDraftResults')
-
-  onProgress?.('Loading player database...')
-  const playerDb = await fetch(`${FANTRAX}/fxea/general/getPlayerIds?sport=EPL`).then(r => r.json())
-
   const totalPeriods = 38
   const firstTeam = rawStandings[0]
   const [fw = 0, fd = 0, fl = 0] = (firstTeam?.points || '').split('-').map(Number)
   const currentPeriod = Math.max(fw + fd + fl, 1)
 
-  onProgress?.('Fetching rosters...')
-  const [roster1, rosterCurrent] = await Promise.all([
+  onProgress?.('Fetching league data...')
+  // All remaining fetches are independent — run in parallel
+  const [scheduleData, draftData, playerDb, roster1, rosterCurrent] = await Promise.all([
+    fxpaPost(leagueId, 'getStandings', { view: 'SCHEDULE' }).catch(() => null),
+    fxpaPost(leagueId, 'getDraftResults'),
+    fetch(`${FANTRAX}/fxea/general/getPlayerIds?sport=EPL`).then(r => r.json()),
     fetch(`${FANTRAX}/fxea/general/getTeamRosters?leagueId=${leagueId}&period=1`).then(r => r.json()),
     fetch(`${FANTRAX}/fxea/general/getTeamRosters?leagueId=${leagueId}&period=${currentPeriod}`).then(r => r.json())
   ])
@@ -84,27 +81,24 @@ export async function fetchLeagueData(leagueInput, onProgress) {
     weeklyMatchups = extractMatchups(richStandings?.tableList)
   }
 
-  // --- Draft ---
-  const allPicks = draftData?.draftPicksOrdered || []
-  const draftPicks = allPicks
-    .filter(p => p.round <= 4)
-    .map(p => ({
-      round: p.round, pickNumber: p.pickNumber,
-      teamName: teamById[p.teamId] || p.teamId,
-      scorerId: p.scorerId,
-      playerName: playerDb[p.scorerId]?.name || `Unknown (${p.scorerId})`,
-      position: playerDb[p.scorerId]?.position || '',
-      club: playerDb[p.scorerId]?.team || ''
-    }))
-
-  // Build current roster IDs from the actual roster endpoint — reliable;
-  // getPlayerStats only returns free agents so can't be used for rostered players.
+  // --- Single pass over current rosters: build ID set, status map, and name change list ---
   const currentRosterIds = new Set()
-  for (const team of Object.values(rosterCurrent?.rosters || {})) {
-    for (const p of (team.rosterItems || [])) currentRosterIds.add(p.id)
+  const activeStatusById = {}
+  const nameChanges = []
+  for (const [teamId, team] of Object.entries(rosterCurrent?.rosters || {})) {
+    for (const p of (team.rosterItems || [])) {
+      currentRosterIds.add(p.id)
+      activeStatusById[p.id] = p.status
+    }
+    const oldName = roster1?.rosters[teamId]?.teamName
+    if (oldName && team.teamName && oldName !== team.teamName) {
+      nameChanges.push({ oldName, newName: team.teamName })
+    }
   }
 
-  // Top picks: rounds 1–2 picks still on their team (kept = delivered)
+  // --- Draft ---
+  const allPicks = draftData?.draftPicksOrdered || []
+
   const topPicks = allPicks
     .filter(p => p.round <= 2 && currentRosterIds.has(p.scorerId))
     .sort((a, b) => a.round - b.round || a.pickNumber - b.pickNumber)
@@ -117,7 +111,6 @@ export async function fetchLeagueData(leagueInput, onProgress) {
       draftRound: p.round, draftPick: p.pickNumber
     }))
 
-  // Worst picks: rounds 1–4 picks that were dropped (not in current roster)
   const worstPicks = allPicks
     .filter(p => p.round <= 4 && !currentRosterIds.has(p.scorerId))
     .sort((a, b) => a.round - b.round || a.pickNumber - b.pickNumber)
@@ -134,13 +127,12 @@ export async function fetchLeagueData(leagueInput, onProgress) {
     }))
 
   // --- Transfers ---
-  const rosterChanges = []
-  // Build a name→id map for looking up active status of added players
   const playerIdByName = {}
   for (const [id, info] of Object.entries(playerDb)) {
     if (info.name) playerIdByName[info.name] = id
   }
 
+  const rosterChanges = []
   if (roster1?.rosters && rosterCurrent?.rosters) {
     for (const teamId of Object.keys(rosterCurrent.rosters)) {
       const early = roster1.rosters[teamId]
@@ -154,13 +146,6 @@ export async function fetchLeagueData(leagueInput, onProgress) {
     }
   }
 
-  // Best incoming transfers: added players who are now ACTIVE starters
-  // Using roster status as a proxy for performance (if they're starting, they earned it)
-  const activeStatusById = {}
-  for (const team of Object.values(rosterCurrent?.rosters || {})) {
-    for (const p of (team.rosterItems || [])) activeStatusById[p.id] = p.status
-  }
-
   const bestIncomings = []
   for (const change of rosterChanges) {
     for (const name of change.added) {
@@ -171,21 +156,8 @@ export async function fetchLeagueData(leagueInput, onProgress) {
     }
   }
 
-  // Undrafted pickups: active starters who were never in the original draft
   const draftedNames = new Set(allPicks.map(p => playerDb[p.scorerId]?.name).filter(Boolean))
   const undraftedPickups = bestIncomings.filter(p => !draftedNames.has(p.playerName)).slice(0, 5)
-
-  // Detect team name changes (period 1 name vs current name)
-  const nameChanges = []
-  if (roster1?.rosters && rosterCurrent?.rosters) {
-    for (const teamId of Object.keys(rosterCurrent.rosters)) {
-      const oldName = roster1.rosters[teamId]?.teamName
-      const newName = rosterCurrent.rosters[teamId]?.teamName
-      if (oldName && newName && oldName !== newName) {
-        nameChanges.push({ oldName, newName })
-      }
-    }
-  }
 
   return {
     leagueId,
@@ -193,7 +165,6 @@ export async function fetchLeagueData(leagueInput, onProgress) {
     currentPeriod,
     totalPeriods,
     standings,
-    draftPicks,
     weeklyMatchups,
     rosterChanges,
     nameChanges,

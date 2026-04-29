@@ -261,14 +261,14 @@ function generateBogeySection(weeklyMatchups) {
     .join('\n')
 }
 
-function generateSeasonStoriesSection(weeklyMatchups, standings, worstPicks) {
+function generateSeasonStoriesSection(weeklyMatchups, standings, worstPicks, weekly) {
   if (!weeklyMatchups.length) return 'Match data needed for season stories.'
   const lines = []
 
   const streaks = analyzeStreaksAll(weeklyMatchups)
   const teams = Object.keys(streaks)
-  const topWin = teams.sort((a, b) => streaks[b].winStreak - streaks[a].winStreak)[0]
-  const topLoss = teams.sort((a, b) => streaks[b].loseStreak - streaks[a].loseStreak)[0]
+  const topWin = [...teams].sort((a, b) => streaks[b].winStreak - streaks[a].winStreak)[0]
+  const topLoss = [...teams].sort((a, b) => streaks[b].loseStreak - streaks[a].loseStreak)[0]
   if (topWin && streaks[topWin].winStreak >= 3) {
     lines.push(`LONGEST WIN STREAK: ${topWin} — ${streaks[topWin].winStreak} in a row`)
     lines.push('')
@@ -290,7 +290,7 @@ function generateSeasonStoriesSection(weeklyMatchups, standings, worstPicks) {
     lines.push('')
   }
 
-  const { teamStats } = analyzeWeekly(weeklyMatchups)
+  const { teamStats } = weekly
   if (teamStats) {
     const consistent = Object.keys(teamStats).sort((a, b) => (teamStats[a].best - teamStats[a].worst) - (teamStats[b].best - teamStats[b].worst))[0]
     if (consistent) {
@@ -352,15 +352,15 @@ function analyzeBiggestUpset(weeklyMatchups, standings) {
   return best
 }
 
-function generateAwardsSection(weeklyMatchups, standings, currentPeriod, totalPeriods, nameChanges) {
+function generateAwardsSection(weeklyMatchups, standings, currentPeriod, totalPeriods, nameChanges, weekly) {
   try {
     const isComplete = currentPeriod >= totalPeriods
     const remaining = totalPeriods - currentPeriod
     const out = []
     const wm = weeklyMatchups || []
-    const s = standings || []
+    const s = standings
 
-    const { biggestMargin } = analyzeWeekly(wm)
+    const { biggestMargin } = weekly
     if (biggestMargin?.winner) {
       out.push('BIGGEST WIN')
       out.push(`${biggestMargin.winner} ${fmt(biggestMargin.winFpts)} — ${fmt(biggestMargin.loseFpts)} ${biggestMargin.loser}`)
@@ -418,8 +418,7 @@ function generateAwardsSection(weeklyMatchups, standings, currentPeriod, totalPe
 function stripHeader(text) {
   if (!text) return ''
   const lines = text.split('\n')
-  let i = 0
-  if (i < lines.length) i++
+  let i = lines.length > 0 ? 1 : 0
   if (i < lines.length && /^[─═]+$/.test(lines[i].trim())) i++
   while (i < lines.length && !lines[i].trim()) i++
   return lines.slice(i).join('\n').trim()
@@ -455,9 +454,9 @@ export function generateRoastSections(leagueData) {
 
   out.push({ id: 'undrafted', icon: '🔍', accent: 'green', title: 'Best Undrafted Pickups', content: generateUndraftedSection(undraftedPickups) })
 
-  out.push({ id: 'stories', icon: '📈', accent: 'green', fullWidth: true, title: 'Season Stories', content: generateSeasonStoriesSection(weeklyMatchups, standings, worstPicks) })
+  out.push({ id: 'stories', icon: '📈', accent: 'green', fullWidth: true, title: 'Season Stories', content: generateSeasonStoriesSection(weeklyMatchups, standings, worstPicks, weekly) })
 
-  out.push({ id: 'awards', icon: '🏅', accent: 'gold', fullWidth: true, title: isComplete ? 'End of Season Awards' : 'Awards So Far', content: generateAwardsSection(weeklyMatchups, standings, currentPeriod, totalPeriods, nameChanges) })
+  out.push({ id: 'awards', icon: '🏅', accent: 'gold', fullWidth: true, title: isComplete ? 'End of Season Awards' : 'Awards So Far', content: generateAwardsSection(weeklyMatchups, standings, currentPeriod, totalPeriods, nameChanges, weekly) })
 
   return out
 }

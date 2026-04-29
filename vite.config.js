@@ -18,9 +18,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
       manifest: {
-        name: 'JoeTest',
-        short_name: 'JoeTest',
-        description: 'JoeTest Web App',
+        name: 'Fantasy Season Review',
+        short_name: 'FSR',
+        description: 'Stats-based Fantasy Football Season Review',
         theme_color: '#ffffff',
         background_color: '#ffffff',
         display: 'standalone',

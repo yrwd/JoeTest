@@ -15,6 +15,8 @@
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "express-rate-limit": "^8.4.1",
+    "lz-string": "^1.5.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.22.0"
@@ -26,6 +28,6 @@
     "eslint-plugin-react-hooks": "^4.6.0",
     "prettier": "^3.2.5",
     "vite": "^5.1.4",
-    "vite-plugin-pwa": "^0.19.2"
+    "vite-plugin-pwa": "^1.2.0"
   }
 }

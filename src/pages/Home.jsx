@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import LZString from 'lz-string'
 import { fetchLeagueData } from '../services/fantrax'
 import { generateRoastSections } from '../services/roastGenerator'
 
@@ -8,6 +9,19 @@ export default function Home() {
   const [progress, setProgress] = useState('')
   const [sections, setSections] = useState([])
   const [error, setError] = useState('')
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    const hash = new URLSearchParams(window.location.hash.slice(1)).get('r')
+    if (!hash) return
+    try {
+      const decoded = JSON.parse(LZString.decompressFromEncodedURIComponent(hash))
+      if (Array.isArray(decoded) && decoded.length) {
+        setSections(decoded)
+        setStatus('done')
+      }
+    } catch {}
+  }, [])
 
   async function handleRoast() {
     if (!leagueUrl.trim() || status === 'loading') return
@@ -18,12 +32,21 @@ export default function Home() {
     try {
       const leagueData = await fetchLeagueData(leagueUrl.trim(), setProgress)
       setProgress('Building report...')
-      setSections(generateRoastSections(leagueData))
+      const result = generateRoastSections(leagueData)
+      setSections(result)
       setStatus('done')
+      const compressed = LZString.compressToEncodedURIComponent(JSON.stringify(result))
+      window.history.replaceState(null, '', `#r=${compressed}`)
     } catch (err) {
       setError(err.message)
       setStatus('error')
     }
+  }
+
+  async function handleCopyLink() {
+    await navigator.clipboard.writeText(window.location.href)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
   }
 
   const busy = status === 'loading'
@@ -69,7 +92,12 @@ export default function Home() {
       )}
 
       {sections.length > 0 && (
-        <>
+        <div className="results">
+          <div className="share-bar">
+            <button onClick={handleCopyLink} className="share-btn">
+              {copied ? '✅ Link copied!' : '📋 Copy share link'}
+            </button>
+          </div>
           <div className="tiles-grid">
             {sections.map(section => (
               <div
@@ -87,7 +115,7 @@ export default function Home() {
               </div>
             ))}
           </div>
-        </>
+        </div>
       )}
     </main>
   )
