@@ -105,7 +105,7 @@ export async function fetchLeagueData(leagueInput, onProgress) {
 
   // Step 2: fetch everything else in parallel — none of these depend on each other
   onProgress?.('Fetching league data...')
-  const [scheduleData, draftData, playerDb, roster1, rosterCurrent, leaderboardData] = await Promise.all([
+  const [scheduleData, draftData, playerDb, roster1, rosterCurrent] = await Promise.all([
     // SCHEDULE view gives the full season's results week-by-week
     // It can fail if the proxy strips the POST body, so we fall back gracefully
     fxpaPost(leagueId, 'getStandings', { view: 'SCHEDULE' }).catch(() => null),
@@ -113,10 +113,7 @@ export async function fetchLeagueData(leagueInput, onProgress) {
     fetch(`${FANTRAX}/fxea/general/getPlayerIds?sport=EPL`).then(r => r.json()),
     fetch(`${FANTRAX}/fxea/general/getTeamRosters?leagueId=${leagueId}&period=1`).then(r => r.json()),
     fetch(`${FANTRAX}/fxea/general/getTeamRosters?leagueId=${leagueId}&period=${currentPeriod}`).then(r => r.json()),
-    fxpaPost(leagueId, 'getLeaderboard').catch(() => null),
   ])
-  console.log('[fantrax] leaderboardData:', leaderboardData)
-  console.log('[fantrax] richStandings tableTypes:', richStandings?.tableList?.map(t => t.tableType))
 
   // --- Standings ---
   const standings = rawStandings.map(t => {
@@ -143,7 +140,6 @@ export async function fetchLeagueData(leagueInput, onProgress) {
   //   nameChanges      — teams that renamed themselves since period 1
   const currentRosterIds = new Set()
   const activeStatusById = {}
-  const playerPointsById = {}
   const currentTeamByPlayerId = {}
   const nameChanges = []
 
@@ -152,8 +148,6 @@ export async function fetchLeagueData(leagueInput, onProgress) {
       currentRosterIds.add(player.id)
       activeStatusById[player.id] = player.status
       currentTeamByPlayerId[player.id] = teamId
-      const pts = player.totalFpts ?? player.fpts ?? player.seasonFpts ?? null
-      if (pts !== null) playerPointsById[player.id] = pts
     }
     const oldName = roster1?.rosters[teamId]?.teamName
     if (oldName && team.teamName && oldName !== team.teamName) {
@@ -164,13 +158,12 @@ export async function fetchLeagueData(leagueInput, onProgress) {
   // --- Draft analysis ---
   const allPicks = draftData?.draftPicksOrdered || []
 
-  // Top picks: drafted players with the highest total fantasy points
-  const hasPointsData = Object.keys(playerPointsById).length > 0
+  // Top picks: drafted players who are currently active starters, sorted by draft position.
+  // ACTIVE status means they're in a starting lineup — the best available proxy for
+  // "delivered value" given Fantrax's API doesn't expose individual player points totals.
   const topPicks = allPicks
-    .filter(p => hasPointsData ? playerPointsById[p.scorerId] !== undefined : (p.round <= 2 && currentRosterIds.has(p.scorerId)))
-    .sort((a, b) => hasPointsData
-      ? (playerPointsById[b.scorerId] || 0) - (playerPointsById[a.scorerId] || 0)
-      : a.round - b.round || a.pickNumber - b.pickNumber)
+    .filter(p => activeStatusById[p.scorerId] === 'ACTIVE')
+    .sort((a, b) => a.round - b.round || a.pickNumber - b.pickNumber)
     .slice(0, 5)
     .map(p => {
       const draftedByTeamId = p.teamId
@@ -183,7 +176,6 @@ export async function fetchLeagueData(leagueInput, onProgress) {
         traded,
         draftRound: p.round,
         draftPick: p.pickNumber,
-        totalFpts: playerPointsById[p.scorerId] ?? null,
       }
     })
 

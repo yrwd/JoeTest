@@ -335,13 +335,11 @@ function generateDraftAnalysisSection(topPicks, worstPicks) {
   const lines = []
 
   if (topPicks.length) {
-    const hasPoints = topPicks.some(p => p.totalFpts !== null)
-    lines.push(hasPoints ? 'TOP PICKS — Most fantasy points scored' : 'TOP PICKS — Highest drafted players still on squad')
+    lines.push('TOP PICKS — Highest-drafted active starters')
     topPicks.forEach((p, i) => {
       const ctx = [p.position, p.club].filter(Boolean).join(', ')
-      const pts = p.totalFpts !== null ? ` — ${Number(p.totalFpts).toFixed(1)} pts` : ''
-      const owner = p.traded ? `drafted by ${p.teamName}, now at ${p.currentTeamName}` : `drafted by ${p.teamName}`
-      lines.push(`${i + 1}. ${p.playerName}${ctx ? ` (${ctx})` : ''}${pts} — R${p.draftRound} P${p.draftPick}, ${owner}`)
+      const owner = p.traded ? `drafted by ${p.teamName}, now at ${p.currentTeamName}` : `${p.teamName}`
+      lines.push(`${i + 1}. ${p.playerName}${ctx ? ` (${ctx})` : ''} — R${p.draftRound} P${p.draftPick}, ${owner}`)
     })
   }
 
