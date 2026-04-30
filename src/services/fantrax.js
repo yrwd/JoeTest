@@ -141,12 +141,14 @@ export async function fetchLeagueData(leagueInput, onProgress) {
   const currentRosterIds = new Set()
   const activeStatusById = {}
   const playerPointsById = {}
+  const currentTeamByPlayerId = {}
   const nameChanges = []
 
   for (const [teamId, team] of Object.entries(rosterCurrent?.rosters || {})) {
     for (const player of (team.rosterItems || [])) {
       currentRosterIds.add(player.id)
       activeStatusById[player.id] = player.status
+      currentTeamByPlayerId[player.id] = teamId
       const pts = player.totalFpts ?? player.fpts ?? player.seasonFpts ?? null
       if (pts !== null) playerPointsById[player.id] = pts
     }
@@ -171,12 +173,19 @@ export async function fetchLeagueData(leagueInput, onProgress) {
       ? (playerPointsById[b.scorerId] || 0) - (playerPointsById[a.scorerId] || 0)
       : a.round - b.round || a.pickNumber - b.pickNumber)
     .slice(0, 5)
-    .map(p => ({
-      ...lookupPlayer(playerDb, p.scorerId),
-      teamName: teamById[p.teamId] || p.teamId,
-      draftRound: p.round,
-      draftPick: p.pickNumber,
-      totalFpts: playerPointsById[p.scorerId] ?? null,
+    .map(p => {
+      const draftedByTeamId = p.teamId
+      const currentTeamId = currentTeamByPlayerId[p.scorerId]
+      const traded = currentTeamId && currentTeamId !== draftedByTeamId
+      return {
+        ...lookupPlayer(playerDb, p.scorerId),
+        teamName: teamById[draftedByTeamId] || draftedByTeamId,
+        currentTeamName: traded ? (teamById[currentTeamId] || currentTeamId) : null,
+        traded,
+        draftRound: p.round,
+        draftPick: p.pickNumber,
+        totalFpts: playerPointsById[p.scorerId] ?? null,
+      }
     }))
 
   // Worst picks: rounds 1–4 players no longer on any roster (dropped = busts)
