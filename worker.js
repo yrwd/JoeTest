@@ -5,7 +5,7 @@ const ALLOWED_PATHS = new Set([
   '/fxea/general/getTeamRosters',
 ])
 
-const ALLOWED_FXPA_METHODS = new Set(['getStandings', 'getDraftResults'])
+const ALLOWED_FXPA_METHODS = new Set(['getStandings', 'getDraftResults', 'getLeaderboard'])
 
 export default {
   async fetch(request, env) {
