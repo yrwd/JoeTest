@@ -1,18 +1,11 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import { cloudflare } from '@cloudflare/vite-plugin';
 
 export default defineConfig({
-  server: {
-    proxy: {
-      '/fantrax': {
-        target: 'https://www.fantrax.com',
-        changeOrigin: true,
-        rewrite: path => path.replace(/^\/fantrax/, ''),
-      },
-    },
-  },
   plugins: [
+    cloudflare(),
     react(),
     VitePWA({
       registerType: 'autoUpdate',
