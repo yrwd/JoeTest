@@ -158,11 +158,8 @@ export async function fetchLeagueData(leagueInput, onProgress) {
   // --- Draft analysis ---
   const allPicks = draftData?.draftPicksOrdered || []
 
-  // Top picks: drafted players who are currently active starters, sorted by draft position.
-  // ACTIVE status means they're in a starting lineup — the best available proxy for
-  // "delivered value" given Fantrax's API doesn't expose individual player points totals.
+  // Top picks: the first 5 picks of the draft
   const topPicks = allPicks
-    .filter(p => activeStatusById[p.scorerId] === 'ACTIVE')
     .sort((a, b) => a.round - b.round || a.pickNumber - b.pickNumber)
     .slice(0, 5)
     .map(p => {

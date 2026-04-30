@@ -335,7 +335,7 @@ function generateDraftAnalysisSection(topPicks, worstPicks) {
   const lines = []
 
   if (topPicks.length) {
-    lines.push('TOP PICKS — Highest-drafted active starters')
+    lines.push('FIRST 5 DRAFT PICKS')
     topPicks.forEach((p, i) => {
       const ctx = [p.position, p.club].filter(Boolean).join(', ')
       const owner = p.traded ? `drafted by ${p.teamName}, now at ${p.currentTeamName}` : `${p.teamName}`
