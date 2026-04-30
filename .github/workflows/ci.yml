@@ -26,3 +26,9 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Deploy
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
