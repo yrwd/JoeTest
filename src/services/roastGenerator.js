@@ -376,7 +376,7 @@ function generateTransferAnalysisSection(rosterChanges, bestIncomings) {
 
   if (bestIncomings.length) {
     lines.push('')
-    lines.push('BEST PLAYERS TRANSFERRED IN (top 5)')
+    lines.push('TRANSFERRED IN — now in active team slots (top 5)')
     bestIncomings.slice(0, 5).forEach((p, i) => {
       const ctx = [p.position, p.club].filter(Boolean).join(', ')
       lines.push(`${i + 1}. ${p.playerName}${ctx ? ` (${ctx})` : ''} → ${p.teamName}`)
@@ -496,8 +496,8 @@ function generateSeasonStoriesSection(weeklyMatchups, standings, worstPicks, wee
 
 /** Best Undrafted Pickups tile */
 function generateUndraftedSection(undraftedPickups) {
-  if (!undraftedPickups.length) return 'No undrafted pickups currently starting for their teams.'
-  const lines = ['TOP UNDRAFTED PICKUPS — signed off the waiver wire, now starting']
+  if (!undraftedPickups.length) return 'No undrafted pickups currently in active team slots.'
+  const lines = ['UNDRAFTED PICKUPS — signed off the waiver wire, now in active slots']
   undraftedPickups.forEach((p, i) => {
     const ctx = [p.position, p.club].filter(Boolean).join(', ')
     lines.push(`${i + 1}. ${p.playerName}${ctx ? ` (${ctx})` : ''} → ${p.teamName}`)
@@ -637,7 +637,7 @@ export function generateRoastSections(leagueData) {
 
   out.push({ id: 'bogey', icon: '👻', accent: 'blue', title: 'Bogey Teams', content: generateBogeySection(weeklyMatchups) })
 
-  out.push({ id: 'undrafted', icon: '🔍', accent: 'green', title: 'Best Undrafted Pickups', content: generateUndraftedSection(undraftedPickups) })
+  out.push({ id: 'undrafted', icon: '🔍', accent: 'green', title: 'Undrafted Pickups', content: generateUndraftedSection(undraftedPickups) })
 
   out.push({ id: 'stories', icon: '📈', accent: 'green', fullWidth: true, title: 'Season Stories', content: generateSeasonStoriesSection(weeklyMatchups, standings, worstPicks, weekly) })
 
