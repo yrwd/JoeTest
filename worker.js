@@ -26,7 +26,15 @@ async function handleFantrax(request, env, url) {
     return new Response('Not allowed', { status: 403, headers: { 'Content-Type': 'text/plain' } })
   }
 
-  const options = { method: request.method, headers: { 'Content-Type': 'application/json' } }
+  const options = {
+    method: request.method,
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json, text/plain, */*',
+      'User-Agent': request.headers.get('User-Agent') || 'Mozilla/5.0',
+      'Accept-Language': request.headers.get('Accept-Language') || 'en-US,en;q=0.9',
+    },
+  }
 
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     const bodyText = await request.text()
