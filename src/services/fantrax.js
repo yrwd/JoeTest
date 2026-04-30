@@ -150,6 +150,10 @@ export async function fetchLeagueData(leagueInput, onProgress) {
       const pts = player.totalFpts ?? player.fpts ?? player.seasonFpts ?? null
       if (pts !== null) playerPointsById[player.id] = pts
     }
+    if (Object.keys(rosterCurrent?.rosters || {}).length > 0) {
+      const sample = Object.values(rosterCurrent.rosters)[0]?.rosterItems?.[0]
+      if (sample) console.log('[fantrax] sample rosterItem keys:', Object.keys(sample), sample)
+    }
     const oldName = roster1?.rosters[teamId]?.teamName
     if (oldName && team.teamName && oldName !== team.teamName) {
       nameChanges.push({ oldName, newName: team.teamName })
