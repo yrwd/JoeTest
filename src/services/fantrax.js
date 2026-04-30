@@ -185,7 +185,7 @@ export async function fetchLeagueData(leagueInput, onProgress) {
         draftPick: p.pickNumber,
         totalFpts: playerPointsById[p.scorerId] ?? null,
       }
-    }))
+    })
 
   // Worst picks: rounds 1–4 players no longer on any roster (dropped = busts)
   // We also flag whether the player is still in the EPL — this distinguishes
