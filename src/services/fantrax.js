@@ -140,12 +140,15 @@ export async function fetchLeagueData(leagueInput, onProgress) {
   //   nameChanges      — teams that renamed themselves since period 1
   const currentRosterIds = new Set()
   const activeStatusById = {}
+  const playerPointsById = {}
   const nameChanges = []
 
   for (const [teamId, team] of Object.entries(rosterCurrent?.rosters || {})) {
     for (const player of (team.rosterItems || [])) {
       currentRosterIds.add(player.id)
       activeStatusById[player.id] = player.status
+      const pts = player.totalFpts ?? player.fpts ?? player.seasonFpts ?? null
+      if (pts !== null) playerPointsById[player.id] = pts
     }
     const oldName = roster1?.rosters[teamId]?.teamName
     if (oldName && team.teamName && oldName !== team.teamName) {
@@ -156,16 +159,20 @@ export async function fetchLeagueData(leagueInput, onProgress) {
   // --- Draft analysis ---
   const allPicks = draftData?.draftPicksOrdered || []
 
-  // Top picks: rounds 1–2 players still on the squad (held = delivered on promise)
+  // Top picks: drafted players with the highest total fantasy points
+  const hasPointsData = Object.keys(playerPointsById).length > 0
   const topPicks = allPicks
-    .filter(p => p.round <= 2 && currentRosterIds.has(p.scorerId))
-    .sort((a, b) => a.round - b.round || a.pickNumber - b.pickNumber)
-    .slice(0, 3)
+    .filter(p => hasPointsData ? playerPointsById[p.scorerId] !== undefined : (p.round <= 2 && currentRosterIds.has(p.scorerId)))
+    .sort((a, b) => hasPointsData
+      ? (playerPointsById[b.scorerId] || 0) - (playerPointsById[a.scorerId] || 0)
+      : a.round - b.round || a.pickNumber - b.pickNumber)
+    .slice(0, 5)
     .map(p => ({
       ...lookupPlayer(playerDb, p.scorerId),
       teamName: teamById[p.teamId] || p.teamId,
       draftRound: p.round,
       draftPick: p.pickNumber,
+      totalFpts: playerPointsById[p.scorerId] ?? null,
     }))
 
   // Worst picks: rounds 1–4 players no longer on any roster (dropped = busts)
